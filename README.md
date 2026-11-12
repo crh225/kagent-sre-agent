@@ -38,6 +38,15 @@ kubectl --context kind-kagent rollout status deployment/kagent-vision-mcp -n kag
 kubectl --context kind-kagent wait --for=condition=Ready agent/kagent-vision -n kagent --timeout=120s
 ```
 
+If a public image host uses a locally trusted corporate or gateway CA, mount
+that CA into the MCP pod without disabling TLS:
+
+```bash
+kubectl --context kind-kagent -n kagent create configmap kagent-vision-extra-ca \
+  --from-file=extra-ca.pem=/path/to/trusted-ca.pem
+kubectl --context kind-kagent -n kagent rollout restart deployment/kagent-vision-mcp
+```
+
 Open the kagent dashboard:
 
 ```bash
