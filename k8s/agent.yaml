@@ -6,9 +6,9 @@ metadata:
 spec:
   template:
     inline:
-      description: Describe public images with a Gemini Vision MCP tool.
+      description: Describe public images with a local Ollama Vision MCP tool.
       modelConfig:
-        name: kagent-vision-gemini
+        name: kagent-vision-ollama
       systemPrompt: |-
         You are Kagent Vision. To answer questions about an image, ask for a
         public HTTPS image URL and call vision_describe_image. State clearly

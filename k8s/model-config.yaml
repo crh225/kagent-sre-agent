@@ -1,11 +1,10 @@
 apiVersion: api.kagent.dev/v1alpha3
 kind: ModelConfig
 metadata:
-  name: kagent-vision-gemini
+  name: kagent-vision-ollama
   namespace: kagent
 spec:
-  provider: Gemini
-  model: gemini-2.0-flash
-  apiKeySecret: kagent-vision-gemini
-  apiKeySecretKey: GEMINI_API_KEY
-  gemini: {}
+  provider: Ollama
+  model: qwen3.6:27b
+  ollama:
+    host: http://host.docker.internal:11434

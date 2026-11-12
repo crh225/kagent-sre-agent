@@ -49,44 +49,42 @@ type toolCallParams struct {
 	} `json:"arguments"`
 }
 
-type geminiRequest struct {
-	Contents []struct {
-		Parts []struct {
-			Text       string `json:"text,omitempty"`
-			InlineData *struct {
-				MIMEType string `json:"mime_type"`
-				Data     string `json:"data"`
-			} `json:"inline_data,omitempty"`
-		} `json:"parts"`
-	} `json:"contents"`
+type ollamaRequest struct {
+	Model    string `json:"model"`
+	Stream   bool   `json:"stream"`
+	Messages []struct {
+		Role    string   `json:"role"`
+		Content string   `json:"content"`
+		Images  []string `json:"images"`
+	} `json:"messages"`
 }
 
-type geminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
+type ollamaResponse struct {
+	Message struct {
+		Content string `json:"content"`
+	} `json:"message"`
+	Error string `json:"error"`
 }
 
 type server struct {
-	httpClient *http.Client
-	apiKey     string
+	httpClient  *http.Client
+	ollamaHost  string
+	ollamaModel string
 }
 
 func main() {
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		log.Fatal("GEMINI_API_KEY must be configured")
+	ollamaHost := strings.TrimRight(os.Getenv("OLLAMA_HOST"), "/")
+	if ollamaHost == "" {
+		ollamaHost = "http://host.docker.internal:11434"
+	}
+	ollamaModel := os.Getenv("OLLAMA_MODEL")
+	if ollamaModel == "" {
+		ollamaModel = "qwen3.6:27b"
 	}
 
 	s := &server{
-		apiKey: apiKey,
+		ollamaHost:  ollamaHost,
+		ollamaModel: ollamaModel,
 		httpClient: &http.Client{
 			Timeout: 45 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -140,7 +138,7 @@ func (s *server) handleMCP(w http.ResponseWriter, r *http.Request) {
 func toolDefinition() map[string]any {
 	return map[string]any{
 		"name":        toolName,
-		"description": "Describe a publicly reachable image URL using Gemini Vision.",
+		"description": "Describe a publicly reachable image URL using local Ollama Vision.",
 		"inputSchema": map[string]any{
 			"type":     "object",
 			"required": []string{"image_url"},
@@ -219,68 +217,56 @@ func (s *server) fetchImage(ctx context.Context, rawURL string) ([]byte, string,
 	return image, mimeType, nil
 }
 
-func (s *server) describeImage(ctx context.Context, image []byte, mimeType, question string) (string, error) {
+func (s *server) describeImage(ctx context.Context, image []byte, _ string, question string) (string, error) {
 	if question == "" {
 		question = "Describe this image accurately and concisely."
 	}
-	var body geminiRequest
-	body.Contents = append(body.Contents, struct {
-		Parts []struct {
-			Text       string `json:"text,omitempty"`
-			InlineData *struct {
-				MIMEType string `json:"mime_type"`
-				Data     string `json:"data"`
-			} `json:"inline_data,omitempty"`
-		} `json:"parts"`
+	var body ollamaRequest
+	body.Model = s.ollamaModel
+	body.Stream = false
+	body.Messages = append(body.Messages, struct {
+		Role    string   `json:"role"`
+		Content string   `json:"content"`
+		Images  []string `json:"images"`
 	}{
-		Parts: []struct {
-			Text       string `json:"text,omitempty"`
-			InlineData *struct {
-				MIMEType string `json:"mime_type"`
-				Data     string `json:"data"`
-			} `json:"inline_data,omitempty"`
-		}{
-			{Text: question},
-			{InlineData: &struct {
-				MIMEType string `json:"mime_type"`
-				Data     string `json:"data"`
-			}{MIMEType: mimeType, Data: base64.StdEncoding.EncodeToString(image)}},
-		},
+		Role:    "user",
+		Content: question,
+		Images:  []string{base64.StdEncoding.EncodeToString(image)},
 	})
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return "", fmt.Errorf("encode Gemini request: %w", err)
+		return "", fmt.Errorf("encode Ollama request: %w", err)
 	}
 	request, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+url.QueryEscape(s.apiKey),
+		s.ollamaHost+"/api/chat",
 		bytes.NewReader(payload),
 	)
 	if err != nil {
-		return "", fmt.Errorf("create Gemini request: %w", err)
+		return "", fmt.Errorf("create Ollama request: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
 	response, err := s.httpClient.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("call Gemini: %w", err)
+		return "", fmt.Errorf("call Ollama: %w", err)
 	}
 	defer response.Body.Close()
 
-	var decoded geminiResponse
+	var decoded ollamaResponse
 	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&decoded); err != nil {
-		return "", fmt.Errorf("decode Gemini response: %w", err)
+		return "", fmt.Errorf("decode Ollama response: %w", err)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		if decoded.Error != nil && decoded.Error.Message != "" {
-			return "", fmt.Errorf("Gemini request failed: %s", decoded.Error.Message)
+		if decoded.Error != "" {
+			return "", fmt.Errorf("Ollama request failed: %s", decoded.Error)
 		}
-		return "", fmt.Errorf("Gemini request failed with HTTP %d", response.StatusCode)
+		return "", fmt.Errorf("Ollama request failed with HTTP %d", response.StatusCode)
 	}
-	if len(decoded.Candidates) == 0 || len(decoded.Candidates[0].Content.Parts) == 0 {
-		return "", errors.New("Gemini returned no description")
+	if decoded.Message.Content == "" {
+		return "", errors.New("Ollama returned no description")
 	}
-	return decoded.Candidates[0].Content.Parts[0].Text, nil
+	return decoded.Message.Content, nil
 }
 
 func (s *server) writeResponse(w http.ResponseWriter, response rpcResponse) {

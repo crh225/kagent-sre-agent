@@ -18,11 +18,10 @@ spec:
           image: kagent-vision-mcp:dev
           imagePullPolicy: IfNotPresent
           env:
-            - name: GEMINI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: kagent-vision-gemini
-                  key: GEMINI_API_KEY
+            - name: OLLAMA_HOST
+              value: http://host.docker.internal:11434
+            - name: OLLAMA_MODEL
+              value: qwen3.6:27b
           ports:
             - containerPort: 8080
               name: http
@@ -57,7 +56,7 @@ metadata:
   name: kagent-vision-mcp
   namespace: kagent
 spec:
-  description: Describe public images with Gemini Vision.
+  description: Describe public images with local Ollama Vision.
   protocol: STREAMABLE_HTTP
   url: http://kagent-vision-mcp.kagent.svc.cluster.local:8080/mcp
   timeout: 60s
