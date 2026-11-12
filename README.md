@@ -56,6 +56,7 @@ kagent dashboard
 Create a session for **kagent-vision** and paste a public HTTPS image URL,
 then ask what is in it. The session actor is managed, sandboxed, suspended
 when idle, and resumed by Agent Substrate through kagent.
+Image analysis with the default local 27B model can take several minutes.
 
 ## Cleanup
 

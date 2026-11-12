@@ -11,7 +11,7 @@ import (
 )
 
 func TestToolsListAdvertisesVisionTool(t *testing.T) {
-	server := &server{httpClient: http.DefaultClient}
+	server := &server{imageClient: http.DefaultClient}
 	request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
 	response := httptest.NewRecorder()
 
@@ -54,9 +54,9 @@ func TestDescribeImageCallsLocalOllama(t *testing.T) {
 	defer ollama.Close()
 
 	server := &server{
-		httpClient:  ollama.Client(),
-		ollamaHost:  ollama.URL,
-		ollamaModel: "qwen3.6:27b",
+		ollamaClient: ollama.Client(),
+		ollamaHost:   ollama.URL,
+		ollamaModel:  "qwen3.6:27b",
 	}
 	answer, err := server.describeImage(context.Background(), []byte("image"), "image/png", "What is shown?")
 	if err != nil {
@@ -77,7 +77,7 @@ func TestDescribeImageCallsLocalOllama(t *testing.T) {
 }
 
 func TestFetchImageRejectsUnsafeURLs(t *testing.T) {
-	server := &server{httpClient: http.DefaultClient}
+	server := &server{imageClient: http.DefaultClient}
 	for _, rawURL := range []string{
 		"http://example.com/image.jpg",
 		"https://127.0.0.1/image.jpg",

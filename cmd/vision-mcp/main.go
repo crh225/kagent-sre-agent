@@ -67,9 +67,10 @@ type ollamaResponse struct {
 }
 
 type server struct {
-	httpClient  *http.Client
-	ollamaHost  string
-	ollamaModel string
+	imageClient  *http.Client
+	ollamaClient *http.Client
+	ollamaHost   string
+	ollamaModel  string
 }
 
 func main() {
@@ -85,12 +86,13 @@ func main() {
 	s := &server{
 		ollamaHost:  ollamaHost,
 		ollamaModel: ollamaModel,
-		httpClient: &http.Client{
+		imageClient: &http.Client{
 			Timeout: 45 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
 		},
+		ollamaClient: &http.Client{Timeout: 5 * time.Minute},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", s.handleMCP)
@@ -192,7 +194,7 @@ func (s *server) fetchImage(ctx context.Context, rawURL string) ([]byte, string,
 	if err != nil {
 		return nil, "", fmt.Errorf("create image request: %w", err)
 	}
-	response, err := s.httpClient.Do(request)
+	response, err := s.imageClient.Do(request)
 	if err != nil {
 		return nil, "", fmt.Errorf("fetch image: %w", err)
 	}
@@ -247,7 +249,7 @@ func (s *server) describeImage(ctx context.Context, image []byte, _ string, ques
 		return "", fmt.Errorf("create Ollama request: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
-	response, err := s.httpClient.Do(request)
+	response, err := s.ollamaClient.Do(request)
 	if err != nil {
 		return "", fmt.Errorf("call Ollama: %w", err)
 	}
