@@ -1,3 +1,3 @@
 module github.com/crh225/kagent-sre-agent
 
-go 1.24.2
+go 1.24

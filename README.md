@@ -1,41 +1,63 @@
-# kagent SRE agent
+# Kagent Vision on kind
 
-A minimal, read-only Flux investigator built with kagent and Agent Substrate.
+This is a small, current-kagent port of
+[`automateyournetwork/kagent_vision`](https://github.com/automateyournetwork/kagent_vision).
+It replaces the original long-running ADK agent with a native kagent `Agent`
+that runs on the Agent Substrate-backed `kagent-default` Harness.
 
-The agent runs through a kagent `Harness` backed by an Agent Substrate
-WorkerPool. Its only tool is the local `flux-mcp` service, which can read one
-Flux `Kustomization` or `HelmRelease`. It has no Kubernetes write permissions,
-GitHub access, Datadog, Port, or Secret access.
+The demo has one MCP tool: it fetches a public image URL and asks Gemini Vision
+to describe it. A local kind cluster cannot reliably access a macOS webcam, so
+camera capture, image generation, video generation, and ASL recording are
+intentionally out of this first local demo.
 
 ## Prerequisites
 
-- kagent installed with Agent Substrate and a ready `kagent-default` WorkerPool
-- a snapshot location configured by the Agent Substrate installation
-- a `ModelConfig` in `kagent-sre`
-- a published `ghcr.io/crh225/kagent-sre-agent` image tag
+- Docker, kind, kubectl, and the [kagent CLI](https://kagent.dev/)
+- A Gemini API key with access to `gemini-2.0-flash`
 
-Set the `AgentTemplate.spec.modelConfig.name` and MCP image tag before applying:
+## Run locally
 
-```bash
-kubectl apply -k k8s/
-```
-
-Create a session after the Agent is Ready:
+Create a kind cluster and install kagent plus Agent Substrate. The kagent
+installer creates the `kagent-default` Harness, its WorkerPool, and local
+snapshot storage.
 
 ```bash
-kagent agent session create --agent flux-investigator --namespace kagent-sre
+kind create cluster --name kagent
+export GEMINI_API_KEY='replace-me'
+cat > kagent-config.yaml <<'EOF'
+install:
+  defaultModelProvider: Gemini
+EOF
+kagent --config kagent-config.yaml install
 ```
 
-## Use the kagent UI
+Build and load the MCP image, then create the shared Gemini Secret and apply
+the demo:
 
-From a machine whose kubeconfig targets the cluster running kagent, open the
-dashboard with:
+```bash
+docker build -t kagent-vision-mcp:dev .
+kind load docker-image --name kagent kagent-vision-mcp:dev
+kubectl --context kind-kagent -n kagent create secret generic kagent-vision-gemini \
+  --from-literal=GEMINI_API_KEY="$GEMINI_API_KEY"
+kubectl --context kind-kagent apply -k k8s/
+kubectl --context kind-kagent rollout status deployment/kagent-vision-mcp -n kagent
+kubectl --context kind-kagent wait --for=condition=Ready agent/kagent-vision -n kagent --timeout=120s
+```
+
+Open the kagent dashboard:
 
 ```bash
 kagent dashboard
 ```
 
-The kagent CLI connects to the controller using the selected kubeconfig and
-starts any required local connection. Use the dashboard to find the
-`flux-investigator` agent, create a session, and inspect its conversations.
+Create a session for **kagent-vision** and paste a public HTTPS image URL,
+then ask what is in it. The session actor is managed, sandboxed, suspended
+when idle, and resumed by Agent Substrate through kagent.
 
+## Cleanup
+
+```bash
+kubectl --context kind-kagent delete -k k8s/
+kubectl --context kind-kagent -n kagent delete secret kagent-vision-gemini
+kind delete cluster --name kagent
+```

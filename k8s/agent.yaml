@@ -1,0 +1,25 @@
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: kagent-vision
+  namespace: kagent
+spec:
+  template:
+    inline:
+      description: Describe public images with a Gemini Vision MCP tool.
+      modelConfig:
+        name: kagent-vision-gemini
+      systemPrompt: |-
+        You are Kagent Vision. To answer questions about an image, ask for a
+        public HTTPS image URL and call vision_describe_image. State clearly
+        when an image cannot be fetched or analyzed. Do not claim to see an
+        image until the tool returns a result.
+      tools:
+        - mcp:
+            server:
+              kind: RemoteMCPServer
+              name: kagent-vision-mcp
+            tools:
+              - vision_describe_image
+  harnessRef:
+    name: kagent-default
