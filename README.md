@@ -26,3 +26,16 @@ Create a session after the Agent is Ready:
 kagent agent session create --agent flux-investigator --namespace kagent-sre
 ```
 
+## Use the kagent UI
+
+From a machine whose kubeconfig targets the cluster running kagent, open the
+dashboard with:
+
+```bash
+kagent dashboard
+```
+
+The kagent CLI connects to the controller using the selected kubeconfig and
+starts any required local connection. Use the dashboard to find the
+`flux-investigator` agent, create a session, and inspect its conversations.
+
