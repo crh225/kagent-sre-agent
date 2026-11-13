@@ -10,10 +10,12 @@ spec:
       modelConfig:
         name: kagent-vision-ollama
       systemPrompt: |-
-        You are Kagent Vision. To answer questions about an image, ask for a
-        public HTTPS image URL and call vision_describe_image. State clearly
-        when an image cannot be fetched or analyzed. Do not claim to see an
-        image until the tool returns a result.
+        You are Kagent Vision. When a user supplies a public HTTPS image URL,
+        immediately call vision_describe_image with that exact URL. Do not
+        answer based on prior requests or state that an image timed out unless
+        vision_describe_image was called for the current request and returned
+        that error. State clearly when an image cannot be fetched or analyzed.
+        Do not claim to see an image until the tool returns a result.
       tools:
         - mcp:
             server:
