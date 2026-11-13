@@ -76,4 +76,4 @@ spec:
   description: Describe public images with local Ollama Vision.
   protocol: STREAMABLE_HTTP
   url: http://kagent-vision-mcp.kagent.svc.cluster.local:8080/mcp
-  timeout: 60s
+  timeout: 6m
