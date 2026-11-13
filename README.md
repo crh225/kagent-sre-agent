@@ -42,7 +42,7 @@ If a public image host uses a locally trusted corporate or gateway CA, mount
 that CA into the MCP pod without disabling TLS:
 
 ```bash
-kubectl --context kind-kagent -n kagent create configmap kagent-vision-extra-ca \
+kubectl --context kind-kagent -n kagent create configmap kagent-vision-extra-ca \\
   --from-file=extra-ca.pem=/path/to/trusted-ca.pem
 kubectl --context kind-kagent -n kagent rollout restart deployment/kagent-vision-mcp
 ```
@@ -85,13 +85,22 @@ your existing GitHub CLI login. The token is not stored in this repository,
 the manifest, the browser, or the container image:
 
 ```bash
-kubectl --context kind-kagent -n kagent create secret generic kagent-vision-github \
+kubectl --context kind-kagent -n kagent create secret generic kagent-vision-github \\
   --from-literal=GITHUB_TOKEN="$(gh auth token)"
 kubectl --context kind-kagent -n kagent rollout restart deployment/kagent-vision-mcp
 ```
 
 Without that Secret, the tool returns an error before attempting a GitHub
 write. The SRE agent cannot merge a pull request or modify Kubernetes.
+
+## Troubleshooting
+
+**Private or localhost image URLs are rejected.** The vision MCP tool
+intentionally rejects image URLs pointing to private registries, internal
+hosts, `localhost`, link-local addresses, or non-HTTPS endpoints. This is an
+SSRF (Server-Side Request Forgery) safety measure to prevent the MCP pod from
+being used as a proxy to reach resources inside the cluster or on your local
+network. Only publicly accessible HTTPS image URLs are accepted.
 
 ## Cleanup
 
