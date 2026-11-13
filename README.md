@@ -85,8 +85,8 @@ your existing GitHub CLI login. The token is not stored in this repository,
 the manifest, the browser, or the container image:
 
 ```bash
-gh auth token | kubectl --context kind-kagent -n kagent create secret generic kagent-vision-github \
-  --from-file=GITHUB_TOKEN=/dev/stdin
+kubectl --context kind-kagent -n kagent create secret generic kagent-vision-github \
+  --from-literal=GITHUB_TOKEN="$(gh auth token)"
 kubectl --context kind-kagent -n kagent rollout restart deployment/kagent-vision-mcp
 ```
 

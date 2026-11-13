@@ -272,7 +272,7 @@ func (s *server) callTool(ctx context.Context, rawParams json.RawMessage) (any, 
 }
 
 func (s *server) createDraftPRTool(ctx context.Context, rawArguments json.RawMessage) any {
-	if os.Getenv("GITHUB_TOKEN") == "" {
+	if githubToken() == "" {
 		return toolError(errors.New("GITHUB_TOKEN is not configured; no GitHub write was attempted"))
 	}
 	proposal, err := draftPRFromArguments(rawArguments)
@@ -367,7 +367,7 @@ func (s *server) githubRequest(ctx context.Context, method, path string, body an
 		return fmt.Errorf("create GitHub request: %w", err)
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("Authorization", "Bearer "+os.Getenv("GITHUB_TOKEN"))
+	request.Header.Set("Authorization", "Bearer "+githubToken())
 	request.Header.Set("User-Agent", "kagent-vision-mcp")
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -571,6 +571,10 @@ func repositoryDirectory(value string) (string, error) {
 		return value, nil
 	}
 	return repositoryPath(value)
+}
+
+func githubToken() string {
+	return strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
 }
 
 func toolError(err error) map[string]any {

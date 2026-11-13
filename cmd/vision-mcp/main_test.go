@@ -113,6 +113,13 @@ func TestCreateDraftPRDoesNotWriteWithoutToken(t *testing.T) {
 	}
 }
 
+func TestGitHubTokenTrimsSecretNewline(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "token-value\n")
+	if token := githubToken(); token != "token-value" {
+		t.Fatalf("githubToken() = %q, want token-value", token)
+	}
+}
+
 func TestDescribeImageCallsLocalOllama(t *testing.T) {
 	var received struct {
 		Model    string `json:"model"`
