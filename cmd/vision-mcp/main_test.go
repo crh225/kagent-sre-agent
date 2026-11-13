@@ -120,6 +120,52 @@ func TestGitHubTokenTrimsSecretNewline(t *testing.T) {
 	}
 }
 
+func TestCreateDraftPRIncludesCurrentFileSHA(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "test-token")
+	var contentUpdate struct {
+		Branch string `json:"branch"`
+		SHA    string `json:"sha"`
+	}
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/crh225/kagent-sre-agent/git/ref/heads/main":
+			_, _ = w.Write([]byte(`{"object":{"sha":"main-sha"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/crh225/kagent-sre-agent/contents/README.md":
+			_, _ = w.Write([]byte(`{"sha":"file-sha"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/crh225/kagent-sre-agent/git/refs":
+			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodPut && r.URL.Path == "/repos/crh225/kagent-sre-agent/contents/README.md":
+			if err := json.NewDecoder(r.Body).Decode(&contentUpdate); err != nil {
+				t.Errorf("decode content update: %v", err)
+			}
+		case r.Method == http.MethodPost && r.URL.Path == "/repos/crh225/kagent-sre-agent/pulls":
+			_, _ = w.Write([]byte(`{"html_url":"https://github.com/crh225/kagent-sre-agent/pull/1"}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.String())
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer api.Close()
+
+	server := &server{ollamaClient: api.Client(), githubBaseURL: api.URL}
+	url, err := server.createDraftPR(context.Background(), draftPRProposal{
+		ID:      "1234567890abcdef",
+		Title:   "docs: test",
+		Body:    "test",
+		Path:    "README.md",
+		Content: "updated",
+	})
+	if err != nil {
+		t.Fatalf("createDraftPR: %v", err)
+	}
+	if url != "https://github.com/crh225/kagent-sre-agent/pull/1" {
+		t.Fatalf("url = %q", url)
+	}
+	if contentUpdate.Branch != "sre/1234567890ab" || contentUpdate.SHA != "file-sha" {
+		t.Fatalf("content update = %#v", contentUpdate)
+	}
+}
+
 func TestDescribeImageCallsLocalOllama(t *testing.T) {
 	var received struct {
 		Model    string `json:"model"`

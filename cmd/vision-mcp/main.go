@@ -87,12 +87,13 @@ type ollamaResponse struct {
 }
 
 type server struct {
-	imageClient  *http.Client
-	ollamaClient *http.Client
-	ollamaHost   string
-	ollamaModel  string
-	activityMu   sync.RWMutex
-	activity     []toolActivity
+	imageClient   *http.Client
+	ollamaClient  *http.Client
+	ollamaHost    string
+	ollamaModel   string
+	githubBaseURL string
+	activityMu    sync.RWMutex
+	activity      []toolActivity
 }
 
 type toolActivity struct {
@@ -324,6 +325,15 @@ func (s *server) createDraftPR(ctx context.Context, proposal draftPRProposal) (s
 	if err := s.githubRequest(ctx, http.MethodGet, "/repos/crh225/kagent-sre-agent/git/ref/heads/main", nil, &mainRef); err != nil {
 		return "", err
 	}
+	var currentFile struct {
+		SHA string `json:"sha"`
+	}
+	if err := s.githubRequest(ctx, http.MethodGet, "/repos/crh225/kagent-sre-agent/contents/"+proposal.Path+"?ref=main", nil, &currentFile); err != nil {
+		return "", err
+	}
+	if currentFile.SHA == "" {
+		return "", errors.New("GitHub did not return the current file SHA")
+	}
 	branch := "sre/" + proposal.ID[:12]
 	if err := s.githubRequest(ctx, http.MethodPost, "/repos/crh225/kagent-sre-agent/git/refs", map[string]string{
 		"ref": "refs/heads/" + branch,
@@ -335,6 +345,7 @@ func (s *server) createDraftPR(ctx context.Context, proposal draftPRProposal) (s
 		"message": proposal.Title,
 		"content": base64.StdEncoding.EncodeToString([]byte(proposal.Content)),
 		"branch":  branch,
+		"sha":     currentFile.SHA,
 	}, nil); err != nil {
 		return "", err
 	}
@@ -362,7 +373,7 @@ func (s *server) githubRequest(ctx context.Context, method, path string, body an
 		}
 		reader = bytes.NewReader(payload)
 	}
-	request, err := http.NewRequestWithContext(ctx, method, "https://api.github.com"+path, reader)
+	request, err := http.NewRequestWithContext(ctx, method, s.githubAPIURL(path), reader)
 	if err != nil {
 		return fmt.Errorf("create GitHub request: %w", err)
 	}
@@ -387,6 +398,14 @@ func (s *server) githubRequest(ctx context.Context, method, path string, body an
 		}
 	}
 	return nil
+}
+
+func (s *server) githubAPIURL(path string) string {
+	baseURL := s.githubBaseURL
+	if baseURL == "" {
+		baseURL = "https://api.github.com"
+	}
+	return strings.TrimRight(baseURL, "/") + path
 }
 
 func (s *server) describeImageTool(ctx context.Context, rawArguments json.RawMessage) (any, *rpcError) {
