@@ -46,6 +46,8 @@
     let activityCursor = 0;
     let activityInitialized = false;
     const handledFailures = new Set();
+    const activityEntries = [];
+    const activityKeys = new Set();
     const savedViewKey = "kagent-vision-activity-view-v1";
     const conversation = document.querySelector("#conversation");
     const activity = document.querySelector("#activity");
@@ -63,7 +65,6 @@
       item.textContent = text;
       conversation.append(item);
       conversation.scrollTop = conversation.scrollHeight;
-      persistView();
       return item;
     }
     function persistView() {
@@ -81,6 +82,7 @@
             markdown: sreOutput.dataset.markdown || "",
             text: sreOutput.textContent,
           },
+          activity: activityEntries,
         }));
       } catch (_) {}
     }
@@ -88,7 +90,7 @@
       try {
         const saved = JSON.parse(localStorage.getItem(savedViewKey));
         if (!saved) return;
-        if (saved.contextId) setContext(saved.contextId);
+        if (saved.contextId) setContext(saved.contextId, false);
         sreContextId = saved.sreContextId || "";
         for (const message of saved.messages || []) {
           const item = addMessage(message.kind, message.text);
@@ -103,6 +105,10 @@
         } else if (saved.sre?.text) {
           sreOutput.textContent = saved.sre.text;
         }
+        for (const event of [...(saved.activity || [])].reverse()) {
+          addActivity(event.label, event.detail, event.css, event.at, event.key, false);
+        }
+        persistView();
       } catch (_) {
         localStorage.removeItem(savedViewKey);
       }
@@ -175,7 +181,8 @@
     function escapeHTML(text) {
       return text.replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
     }
-    function addActivity(label, detail, css = "", at = "") {
+    function addActivity(label, detail, css = "", at = "", key = "", persist = true) {
+      if (key && activityKeys.has(key)) return;
       const item = document.createElement("li");
       item.className = "event " + css;
       item.innerHTML = "<strong></strong><div></div><div class='time'></div>";
@@ -183,6 +190,10 @@
       item.querySelector("div").textContent = detail;
       item.querySelector(".time").textContent = new Date(at || Date.now()).toLocaleTimeString();
       activity.prepend(item);
+      activityEntries.unshift({label, detail, css, at: at || new Date().toISOString(), key});
+      if (activityEntries.length > 100) activityEntries.pop();
+      if (key) activityKeys.add(key);
+      if (persist) persistView();
     }
     function textParts(parts) { return (parts || []).map(p => p.text || "").join(""); }
     function processEvent(payload, agentMessage) {
@@ -212,10 +223,10 @@
         if (usage) addActivity("Model usage", `${usage.inputTokens || 0} input · ${usage.outputTokens || 0} output tokens`, "done");
       }
     }
-    function setContext(value) {
+    function setContext(value, persist = true) {
       contextId = value;
       session.textContent = "Session: " + value;
-      persistView();
+      if (persist) persistView();
     }
     async function refreshToolActivity() {
       try {
@@ -224,7 +235,13 @@
         const events = body.events || [];
         const newEvents = events.slice(activityCursor);
         for (const event of newEvents) {
-          addActivity("MCP " + event.tool, event.phase + " · " + event.detail, event.phase === "completed" ? "done" : event.phase === "failed" ? "fail" : "tool", event.at);
+          addActivity(
+            "MCP " + event.tool,
+            event.phase + " · " + event.detail,
+            event.phase === "completed" ? "done" : event.phase === "failed" ? "fail" : "tool",
+            event.at,
+            `mcp:${event.at}:${event.tool}:${event.phase}:${event.detail}`,
+          );
         }
         if (activityInitialized) {
           for (const event of newEvents.filter(event => event.phase === "failed")) {
@@ -302,6 +319,7 @@
       submit.disabled = true;
       addMessage("user", message);
       const agentMessage = addMessage("agent", "Starting agent session…");
+      persistView();
       addActivity("Request", "Sent to kagent", "tool");
       state.textContent = "working";
       try {
