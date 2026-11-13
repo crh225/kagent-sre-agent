@@ -5,10 +5,10 @@ This is a small, current-kagent port of
 It replaces the original long-running ADK agent with a native kagent `Agent`
 that runs on the Agent Substrate-backed `kagent-default` Harness.
 
-The demo has one MCP tool: it fetches a public image URL and asks a local
-Ollama vision model to describe it. A local kind cluster cannot reliably access a macOS webcam, so
-camera capture, image generation, video generation, and ASL recording are
-intentionally out of this first local demo.
+The vision agent has one MCP tool: it fetches a public image URL and asks a
+local Ollama vision model to describe it. A local kind cluster cannot reliably
+access a macOS webcam, so camera capture, image generation, video generation,
+and ASL recording are intentionally out of this first local demo.
 
 ## Prerequisites
 
@@ -69,6 +69,27 @@ Create a session for **kagent-vision** and paste a public HTTPS image URL,
 then ask what is in it. The session actor is managed, sandboxed, suspended
 when idle, and resumed by Agent Substrate through kagent.
 Image analysis with the default local 27B model can take several minutes.
+
+## SRE handoff and approved draft PRs
+
+The activity UI automatically sends new MCP failures to `kagent-sre`. The SRE
+agent can read recent failures and public files from this repository. It can
+propose a complete replacement for one file, but `github_create_draft_pr` is
+configured with `requireApproval: true`: the kagent dashboard presents its
+arguments and must be explicitly approved before any GitHub write occurs.
+
+To enable that optional local capability, create an in-cluster Secret from
+your existing GitHub CLI login. The token is not stored in this repository,
+the manifest, the browser, or the container image:
+
+```bash
+gh auth token | kubectl --context kind-kagent -n kagent create secret generic kagent-vision-github \
+  --from-file=GITHUB_TOKEN=/dev/stdin
+kubectl --context kind-kagent -n kagent rollout restart deployment/kagent-vision-mcp
+```
+
+Without that Secret, the tool returns an error before attempting a GitHub
+write. The SRE agent cannot merge a pull request or modify Kubernetes.
 
 ## Cleanup
 

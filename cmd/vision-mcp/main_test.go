@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestToolsListAdvertisesVisionTool(t *testing.T) {
+func TestToolsListAdvertisesExpectedTools(t *testing.T) {
 	server := &server{imageClient: http.DefaultClient}
 	request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
 	response := httptest.NewRecorder()
@@ -30,8 +30,73 @@ func TestToolsListAdvertisesVisionTool(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(body.Result.Tools) != 1 || body.Result.Tools[0].Name != toolName {
-		t.Fatalf("tools = %#v, want only %q", body.Result.Tools, toolName)
+	found := map[string]bool{}
+	for _, tool := range body.Result.Tools {
+		found[tool.Name] = true
+	}
+	for _, name := range []string{toolName, "sre_get_recent_failures", "github_get_file", "github_create_draft_pr"} {
+		if !found[name] {
+			t.Errorf("tools = %#v, want %q", body.Result.Tools, name)
+		}
+	}
+	if found["github_propose_draft_pr"] {
+		t.Fatal("tools expose the removed custom proposal approval path")
+	}
+}
+
+func TestRepositoryPathRejectsTraversal(t *testing.T) {
+	for _, value := range []string{"../go.mod", "cmd/vision mcp/main.go", "cmd/vision-mcp/main.go?ref=other"} {
+		if _, err := repositoryPath(value); err == nil {
+			t.Errorf("repositoryPath accepted %q", value)
+		}
+	}
+	path, err := repositoryPath("cmd/vision-mcp/main.go")
+	if err != nil {
+		t.Fatalf("repositoryPath: %v", err)
+	}
+	if path != "cmd/vision-mcp/main.go" {
+		t.Fatalf("path = %q", path)
+	}
+}
+
+func TestDraftPRArgumentsRequireOneSafeCompleteReplacement(t *testing.T) {
+	valid, err := draftPRFromArguments(json.RawMessage(`{
+		"title":"Fix timeout handling",
+		"body":"Concise summary.",
+		"path":"cmd/vision-mcp/main.go",
+		"content":"package main\n"
+	}`))
+	if err != nil {
+		t.Fatalf("draftPRFromArguments valid input: %v", err)
+	}
+	if valid.Path != "cmd/vision-mcp/main.go" {
+		t.Fatalf("path = %q", valid.Path)
+	}
+	for _, raw := range []string{
+		`{"title":"","body":"body","path":"go.mod","content":"module example"}`,
+		`{"title":"title","body":"body","path":"../go.mod","content":"module example"}`,
+		`{"title":"title","body":"body","path":"go.mod","content":""}`,
+	} {
+		if _, err := draftPRFromArguments(json.RawMessage(raw)); err == nil {
+			t.Errorf("draftPRFromArguments accepted %s", raw)
+		}
+	}
+}
+
+func TestCreateDraftPRDoesNotWriteWithoutToken(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+	result := (&server{}).createDraftPRTool(context.Background(), json.RawMessage(`{
+		"title":"title",
+		"body":"body",
+		"path":"go.mod",
+		"content":"module example"
+	}`))
+	body, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("result type = %T, want map", result)
+	}
+	if body["isError"] != true {
+		t.Fatalf("result = %#v, want no-token error", result)
 	}
 }
 

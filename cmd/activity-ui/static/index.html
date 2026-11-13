@@ -18,6 +18,7 @@
     .message { max-width:86%; padding:13px 15px; border-radius:14px; line-height:1.5; white-space:pre-wrap; }
     .user { align-self:end; background:#6452d8; } .agent { background:#19233b; border:1px solid #2d3e64; } .empty { color:#9aa7c7; margin:auto; text-align:center; }
     .agent.markdown { white-space:normal; } .agent.markdown > :first-child { margin-top:0; } .agent.markdown > :last-child { margin-bottom:0; } .agent.markdown p { margin:0 0 10px; } .agent.markdown h1, .agent.markdown h2, .agent.markdown h3 { margin:14px 0 8px; line-height:1.25; } .agent.markdown h1 { font-size:20px; } .agent.markdown h2 { font-size:17px; } .agent.markdown h3 { font-size:15px; } .agent.markdown ul, .agent.markdown ol { margin:6px 0 12px; padding-left:22px; } .agent.markdown code { background:#0b1020; border-radius:4px; padding:2px 4px; font-family:ui-monospace, monospace; font-size:.9em; } .agent.markdown a { color:#b6a8ff; }
+    .sre { border-top:1px solid #273351; padding:14px 18px; } .sre h3 { font-size:12px; letter-spacing:.04em; margin:0 0 8px; } #sre-output { color:#c8d2eb; font-size:13px; line-height:1.45; max-height:220px; overflow:auto; } #sre-output > :first-child { margin-top:0; }
     form { display:flex; gap:10px; padding:16px; border-top:1px solid #273351; } input { min-width:0; flex:1; border:1px solid #3a4b77; border-radius:10px; padding:13px; color:inherit; background:#0b1020; font:inherit; } button { border:0; border-radius:10px; color:white; background:#7357ef; font-weight:700; padding:0 18px; cursor:pointer; } button:disabled { opacity:.55; cursor:wait; }
     #activity { list-style:none; padding:12px 18px 20px; margin:0; display:flex; flex-direction:column; gap:11px; } .event { border-left:2px solid #536a9d; padding-left:11px; font-size:13px; } .event .time { color:#8d9bbd; font-size:11px; margin-top:3px; } .event.tool { border-color:#ffb45c; } .event.done { border-color:#5ce6ad; } .event.fail { border-color:#ff7591; }
     .session { padding:14px 18px; border-top:1px solid #273351; font-family:ui-monospace, monospace; font-size:11px; color:#99a5c5; word-break:break-all; }
@@ -35,12 +36,16 @@
     <aside class="panel">
       <div class="panel-head"><h2>Agent activity</h2><span id="state" class="muted">idle</span></div>
       <ul id="activity"></ul>
+      <div class="sre"><h3>SRE incident agent</h3><div id="sre-output">Automatically investigates new MCP failures.</div></div>
       <div id="session" class="session">Session will be created on your first request.</div>
     </aside>
   </main>
   <script>
     let contextId = "";
+    let sreContextId = "";
     let activityCursor = 0;
+    let activityInitialized = false;
+    const handledFailures = new Set();
     const conversation = document.querySelector("#conversation");
     const activity = document.querySelector("#activity");
     const state = document.querySelector("#state");
@@ -48,6 +53,7 @@
     const form = document.querySelector("#chat");
     const input = document.querySelector("#message");
     const submit = document.querySelector("#submit");
+    const sreOutput = document.querySelector("#sre-output");
 
     function addMessage(kind, text) {
       document.querySelector("#empty")?.remove();
@@ -138,11 +144,64 @@
         const response = await fetch("/api/activity");
         const body = await response.json();
         const events = body.events || [];
-        for (const event of events.slice(activityCursor)) {
+        const newEvents = events.slice(activityCursor);
+        for (const event of newEvents) {
           addActivity("MCP " + event.tool, event.phase + " · " + event.detail, event.phase === "completed" ? "done" : event.phase === "failed" ? "fail" : "tool");
         }
+        if (activityInitialized) {
+          for (const event of newEvents.filter(event => event.phase === "failed")) {
+            const key = `${event.at}:${event.tool}:${event.detail}`;
+            if (!handledFailures.has(key)) {
+              handledFailures.add(key);
+              startSRE(event);
+            }
+          }
+        }
         activityCursor = events.length;
+        activityInitialized = true;
       } catch (_) {}
+    }
+    async function startSRE(failure) {
+      sreOutput.textContent = "Investigating MCP failure…";
+      addActivity("SRE handoff", `${failure.tool} failure sent to kagent-sre`, "tool");
+      try {
+        const response = await fetch("/api/sre", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({...failure, contextId:sreContextId}) });
+        if (!response.ok || !response.body) throw new Error(await response.text());
+        const reader = response.body.getReader(), decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const {value, done} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream:true});
+          const records = buffer.split("\n\n");
+          buffer = records.pop();
+          for (const record of records) {
+            const data = record.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).join("\n");
+            if (data) processSREEvent(JSON.parse(data));
+          }
+        }
+      } catch (error) {
+        sreOutput.textContent = "SRE handoff failed: " + error.message;
+        addActivity("SRE handoff", error.message, "fail");
+      }
+    }
+    function processSREEvent(payload) {
+      const result = payload.result || {};
+      if (result.statusUpdate) {
+        addActivity("SRE status", result.statusUpdate.status.state.replace("TASK_STATE_", "").toLowerCase(), "tool");
+      }
+      if (result.artifactUpdate) {
+        const update = result.artifactUpdate;
+        const text = textParts(update.artifact?.parts);
+        if (text) {
+          const completeText = update.append ? (sreOutput.dataset.markdown || "") + text : text;
+          sreOutput.dataset.markdown = completeText;
+          renderMarkdown(sreOutput, completeText);
+        }
+        if (update.contextId) sreContextId = update.contextId;
+      }
+      if (result.task?.contextId) sreContextId = result.task.contextId;
+      if (result.task?.status?.state === "TASK_STATE_COMPLETED") addActivity("SRE incident", "investigation completed", "done");
     }
     setInterval(refreshToolActivity, 1000);
     form.addEventListener("submit", async event => {

@@ -19,6 +19,9 @@ spec:
           imagePullPolicy: IfNotPresent
           command:
             - /activity-ui
+          env:
+            - name: KAGENT_SRE_A2A_URL
+              value: http://kagent-controller.kagent.svc.cluster.local:8083/agents/kagent/kagent-sre
           ports:
             - containerPort: 8090
               name: http

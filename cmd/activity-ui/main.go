@@ -28,6 +28,7 @@ var indexHTML []byte
 
 type app struct {
 	a2aURL     string
+	sreA2AURL  string
 	mcpURL     string
 	httpClient *http.Client
 }
@@ -40,6 +41,7 @@ type chatRequest struct {
 func main() {
 	a := &app{
 		a2aURL:     valueOrDefault("KAGENT_A2A_URL", defaultA2AURL),
+		sreA2AURL:  valueOrDefault("KAGENT_SRE_A2A_URL", "http://kagent-controller.kagent.svc.cluster.local:8083/agents/kagent/kagent-sre"),
 		mcpURL:     valueOrDefault("MCP_ACTIVITY_URL", defaultMCPURL),
 		httpClient: &http.Client{Timeout: 6 * time.Minute},
 	}
@@ -49,6 +51,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("/api/chat", a.handleChat)
+	mux.HandleFunc("/api/sre", a.handleSRE)
 	mux.HandleFunc("/api/activity", a.handleActivity)
 
 	log.Println("activity UI listening on :8090")
@@ -91,12 +94,42 @@ func (a *app) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.proxyA2A(w, r, a.a2aURL, input)
+}
+
+func (a *app) handleSRE(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method must be POST", http.StatusMethodNotAllowed)
+		return
+	}
+	defer r.Body.Close()
+	var failure struct {
+		Tool      string `json:"tool"`
+		Detail    string `json:"detail"`
+		ContextID string `json:"contextId"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&failure); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	input := chatRequest{
+		ContextID: failure.ContextID,
+		Message: fmt.Sprintf(
+			"Investigate this local MCP failure: tool=%q detail=%q. First call sre_get_recent_failures. Then use github_get_file only if repository context is needed. Explain the likely cause and a minimal safe fix. Do not claim a PR was created; any GitHub write needs explicit human approval.",
+			failure.Tool,
+			failure.Detail,
+		),
+	}
+	a.proxyA2A(w, r, a.sreA2AURL, input)
+}
+
+func (a *app) proxyA2A(w http.ResponseWriter, r *http.Request, endpoint string, input chatRequest) {
 	payload, err := sendMessagePayload(input)
 	if err != nil {
 		http.Error(w, "create A2A request", http.StatusInternalServerError)
 		return
 	}
-	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, a.a2aURL, bytes.NewReader(payload))
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		http.Error(w, "create upstream request", http.StatusInternalServerError)
 		return
@@ -135,6 +168,7 @@ func (a *app) handleActivity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method must be GET", http.StatusMethodNotAllowed)
 		return
 	}
+
 	request, err := http.NewRequestWithContext(r.Context(), http.MethodGet, a.mcpURL, nil)
 	if err != nil {
 		http.Error(w, "create MCP activity request", http.StatusInternalServerError)

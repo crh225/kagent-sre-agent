@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,11 +45,24 @@ type rpcError struct {
 }
 
 type toolCallParams struct {
-	Name      string `json:"name"`
-	Arguments struct {
-		ImageURL string `json:"image_url"`
-		Question string `json:"question"`
-	} `json:"arguments"`
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+type visionArguments struct {
+	ImageURL string `json:"image_url"`
+	Question string `json:"question"`
+}
+
+type githubFileArguments struct {
+	Path string `json:"path"`
+}
+
+type draftPRArguments struct {
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	Path    string `json:"path"`
+	Content string `json:"content"`
 }
 
 type ollamaRequest struct {
@@ -81,6 +96,14 @@ type toolActivity struct {
 	Tool   string    `json:"tool"`
 	Phase  string    `json:"phase"`
 	Detail string    `json:"detail"`
+}
+
+type draftPRProposal struct {
+	ID      string
+	Title   string
+	Body    string
+	Path    string
+	Content string
 }
 
 func main() {
@@ -139,7 +162,7 @@ func (s *server) handleMCP(w http.ResponseWriter, r *http.Request) {
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 		}
 	case "tools/list":
-		response.Result = map[string]any{"tools": []any{toolDefinition()}}
+		response.Result = map[string]any{"tools": toolDefinitions()}
 	case "tools/call":
 		response.Result, response.Error = s.callTool(r.Context(), request.Params)
 	default:
@@ -162,16 +185,51 @@ func (s *server) handleActivity(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func toolDefinition() map[string]any {
-	return map[string]any{
-		"name":        toolName,
-		"description": "Describe a publicly reachable image URL using local Ollama Vision.",
-		"inputSchema": map[string]any{
-			"type":     "object",
-			"required": []string{"image_url"},
-			"properties": map[string]any{
-				"image_url": map[string]string{"type": "string", "description": "Public HTTPS URL of a JPEG, PNG, GIF, or WebP image."},
-				"question":  map[string]string{"type": "string", "description": "Optional question about the image."},
+func toolDefinitions() []any {
+	return []any{
+		map[string]any{
+			"name":        toolName,
+			"description": "Describe a publicly reachable image URL using local Ollama Vision.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"image_url"},
+				"properties": map[string]any{
+					"image_url": map[string]string{"type": "string", "description": "Public HTTPS URL of a JPEG, PNG, GIF, or WebP image."},
+					"question":  map[string]string{"type": "string", "description": "Optional question about the image."},
+				},
+			},
+		},
+		map[string]any{
+			"name":        "sre_get_recent_failures",
+			"description": "Read recent failed MCP tool calls from this local demo.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		},
+		map[string]any{
+			"name":        "github_get_file",
+			"description": "Read a file from the public crh225/kagent-sre-agent main branch.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"path"},
+				"properties": map[string]any{
+					"path": map[string]string{"type": "string", "description": "Repository-relative file path."},
+				},
+			},
+		},
+		map[string]any{
+			"name":        "github_create_draft_pr",
+			"description": "Create a draft PR for a complete file replacement in crh225/kagent-sre-agent. This tool is approval-gated by the SRE agent configuration.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"title", "body", "path", "content"},
+				"properties": map[string]any{
+					"title":   map[string]string{"type": "string"},
+					"body":    map[string]string{"type": "string"},
+					"path":    map[string]string{"type": "string"},
+					"content": map[string]string{"type": "string", "description": "Complete replacement content for the file."},
+				},
 			},
 		},
 	}
@@ -182,17 +240,150 @@ func (s *server) callTool(ctx context.Context, rawParams json.RawMessage) (any, 
 	if err := json.Unmarshal(rawParams, &params); err != nil {
 		return nil, &rpcError{Code: -32602, Message: "invalid tool arguments"}
 	}
-	if params.Name != toolName {
+	switch params.Name {
+	case toolName:
+		return s.describeImageTool(ctx, params.Arguments)
+	case "sre_get_recent_failures":
+		return s.recentFailures(), nil
+	case "github_get_file":
+		return s.githubGetFile(ctx, params.Arguments), nil
+	case "github_create_draft_pr":
+		return s.createDraftPRTool(ctx, params.Arguments), nil
+	default:
 		return nil, &rpcError{Code: -32602, Message: "unknown tool"}
 	}
+}
 
+func (s *server) createDraftPRTool(ctx context.Context, rawArguments json.RawMessage) any {
+	if os.Getenv("GITHUB_TOKEN") == "" {
+		return toolError(errors.New("GITHUB_TOKEN is not configured; no GitHub write was attempted"))
+	}
+	proposal, err := draftPRFromArguments(rawArguments)
+	if err != nil {
+		return toolError(err)
+	}
+	proposal.ID, err = randomID()
+	if err != nil {
+		return toolError(fmt.Errorf("create draft PR ID: %w", err))
+	}
+	prURL, err := s.createDraftPR(ctx, proposal)
+	if err != nil {
+		return toolError(err)
+	}
+	return toolText(map[string]any{"state": "created", "pullRequestURL": prURL})
+}
+
+func draftPRFromArguments(rawArguments json.RawMessage) (draftPRProposal, error) {
+	var arguments draftPRArguments
+	if err := json.Unmarshal(rawArguments, &arguments); err != nil {
+		return draftPRProposal{}, fmt.Errorf("invalid draft PR proposal: %w", err)
+	}
+	path, err := repositoryPath(arguments.Path)
+	if err != nil {
+		return draftPRProposal{}, err
+	}
+	arguments.Title = strings.TrimSpace(arguments.Title)
+	arguments.Body = strings.TrimSpace(arguments.Body)
+	if arguments.Title == "" || arguments.Body == "" || arguments.Content == "" {
+		return draftPRProposal{}, errors.New("title, body, and complete replacement content are required")
+	}
+	if len(arguments.Content) > 32<<10 {
+		return draftPRProposal{}, errors.New("proposal content exceeds the 32 KiB limit")
+	}
+	return draftPRProposal{
+		Title:   arguments.Title,
+		Body:    arguments.Body,
+		Path:    path,
+		Content: arguments.Content,
+	}, nil
+}
+
+func (s *server) createDraftPR(ctx context.Context, proposal draftPRProposal) (string, error) {
+	var mainRef struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := s.githubRequest(ctx, http.MethodGet, "/repos/crh225/kagent-sre-agent/git/ref/heads/main", nil, &mainRef); err != nil {
+		return "", err
+	}
+	branch := "sre/" + proposal.ID[:12]
+	if err := s.githubRequest(ctx, http.MethodPost, "/repos/crh225/kagent-sre-agent/git/refs", map[string]string{
+		"ref": "refs/heads/" + branch,
+		"sha": mainRef.Object.SHA,
+	}, nil); err != nil {
+		return "", err
+	}
+	if err := s.githubRequest(ctx, http.MethodPut, "/repos/crh225/kagent-sre-agent/contents/"+proposal.Path, map[string]string{
+		"message": proposal.Title,
+		"content": base64.StdEncoding.EncodeToString([]byte(proposal.Content)),
+		"branch":  branch,
+	}, nil); err != nil {
+		return "", err
+	}
+	var pull struct {
+		HTMLURL string `json:"html_url"`
+	}
+	if err := s.githubRequest(ctx, http.MethodPost, "/repos/crh225/kagent-sre-agent/pulls", map[string]any{
+		"title": proposal.Title,
+		"head":  branch,
+		"base":  "main",
+		"body":  proposal.Body,
+		"draft": true,
+	}, &pull); err != nil {
+		return "", err
+	}
+	return pull.HTMLURL, nil
+}
+
+func (s *server) githubRequest(ctx context.Context, method, path string, body any, output any) error {
+	var reader io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("encode GitHub request: %w", err)
+		}
+		reader = bytes.NewReader(payload)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, "https://api.github.com"+path, reader)
+	if err != nil {
+		return fmt.Errorf("create GitHub request: %w", err)
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("Authorization", "Bearer "+os.Getenv("GITHUB_TOKEN"))
+	request.Header.Set("User-Agent", "kagent-vision-mcp")
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	response, err := s.ollamaClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("call GitHub: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		message, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+		return fmt.Errorf("GitHub returned HTTP %d: %s", response.StatusCode, strings.TrimSpace(string(message)))
+	}
+	if output != nil {
+		if err := json.NewDecoder(response.Body).Decode(output); err != nil {
+			return fmt.Errorf("decode GitHub response: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *server) describeImageTool(ctx context.Context, rawArguments json.RawMessage) (any, *rpcError) {
+	var arguments visionArguments
+	if err := json.Unmarshal(rawArguments, &arguments); err != nil {
+		return nil, &rpcError{Code: -32602, Message: "invalid image tool arguments"}
+	}
 	s.recordActivity("started", "Fetching the requested image.")
-	image, mimeType, err := s.fetchImage(ctx, params.Arguments.ImageURL)
+	image, mimeType, err := s.fetchImage(ctx, arguments.ImageURL)
 	if err != nil {
 		s.recordActivity("failed", err.Error())
 		return toolError(err), nil
 	}
-	answer, err := s.describeImage(ctx, image, mimeType, params.Arguments.Question)
+	answer, err := s.describeImage(ctx, image, mimeType, arguments.Question)
 	if err != nil {
 		s.recordActivity("failed", err.Error())
 		return toolError(err), nil
@@ -217,10 +408,107 @@ func (s *server) recordActivity(phase, detail string) {
 	}
 }
 
+func randomID() (string, error) {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes[:]), nil
+}
+
+func (s *server) recentFailures() any {
+	s.activityMu.RLock()
+	defer s.activityMu.RUnlock()
+	failures := make([]toolActivity, 0)
+	for _, event := range s.activity {
+		if event.Phase == "failed" {
+			failures = append(failures, event)
+		}
+	}
+	return toolText(map[string]any{"failures": failures})
+}
+
+func (s *server) githubGetFile(ctx context.Context, rawArguments json.RawMessage) any {
+	var arguments githubFileArguments
+	if err := json.Unmarshal(rawArguments, &arguments); err != nil {
+		return toolError(fmt.Errorf("invalid GitHub tool arguments: %w", err))
+	}
+	path, err := repositoryPath(arguments.Path)
+	if err != nil {
+		return toolError(err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/crh225/kagent-sre-agent/contents/"+path+"?ref=main", nil)
+	if err != nil {
+		return toolError(fmt.Errorf("create GitHub request: %w", err))
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("User-Agent", "kagent-vision-mcp")
+	response, err := s.imageClient.Do(request)
+	if err != nil {
+		return toolError(fmt.Errorf("read GitHub file: %w", err))
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return toolError(fmt.Errorf("read GitHub file: received HTTP %d", response.StatusCode))
+	}
+	var file struct {
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+		Size     int    `json:"size"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&file); err != nil {
+		return toolError(fmt.Errorf("decode GitHub file: %w", err))
+	}
+	if file.Encoding != "base64" {
+		return toolError(errors.New("GitHub file did not use base64 encoding"))
+	}
+	content, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(file.Content, "\n", ""))
+	if err != nil {
+		return toolError(fmt.Errorf("decode GitHub file content: %w", err))
+	}
+	const maxFileBytes = 32 << 10
+	if len(content) > maxFileBytes {
+		return toolError(fmt.Errorf("GitHub file is %d bytes; maximum supported size is %d", len(content), maxFileBytes))
+	}
+	return toolText(map[string]any{
+		"repository": "crh225/kagent-sre-agent",
+		"path":       path,
+		"size":       file.Size,
+		"content":    string(content),
+	})
+}
+
+func repositoryPath(value string) (string, error) {
+	value = strings.Trim(strings.TrimSpace(value), "/")
+	if value == "" || strings.Contains(value, "..") || strings.Contains(value, "\\") {
+		return "", errors.New("path must be a non-empty repository-relative path")
+	}
+	sanitized := strings.Map(func(r rune) rune {
+		if r == '/' || r == '-' || r == '_' || r == '.' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9') {
+			return r
+		}
+		return -1
+	}, value)
+	if sanitized != value {
+		return "", errors.New("path contains unsupported characters")
+	}
+	return value, nil
+}
+
 func toolError(err error) map[string]any {
 	return map[string]any{
 		"content": []map[string]string{{"type": "text", "text": err.Error()}},
 		"isError": true,
+	}
+}
+
+func toolText(value any) map[string]any {
+	content, err := json.Marshal(value)
+	if err != nil {
+		return toolError(fmt.Errorf("encode tool response: %w", err))
+	}
+	return map[string]any{
+		"content": []map[string]string{{"type": "text", "text": string(content)}},
 	}
 }
 

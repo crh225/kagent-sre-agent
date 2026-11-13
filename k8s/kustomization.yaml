@@ -4,4 +4,5 @@ resources:
   - model-config.yaml
   - vision-mcp.yaml
   - agent.yaml
+  - sre-agent.yaml
   - activity-ui.yaml

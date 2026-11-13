@@ -1,0 +1,38 @@
+apiVersion: api.kagent.dev/v1alpha3
+kind: Agent
+metadata:
+  name: kagent-sre
+  namespace: kagent
+spec:
+  template:
+    inline:
+      description: Investigate failures from the local Kagent Vision MCP service.
+      modelConfig:
+        name: kagent-vision-ollama
+      systemPrompt: |-
+        You are a Kubernetes SRE agent for this local demo. When notified of a
+        failure, call sre_get_recent_failures first. Use github_get_file only
+        to inspect the public crh225/kagent-sre-agent repository if needed.
+        Give evidence, the probable root cause, and a minimal safe remediation
+        proposal. If you have read the file and can provide its complete,
+        corrected replacement content, call github_create_draft_pr. Kagent will
+        require a human approval before it runs. You have no shell, Kubernetes
+        write, GitHub merge, or direct remediation tools. Never claim a change
+        or pull request exists until the tool returns a pull request URL.
+      tools:
+        - mcp:
+            server:
+              kind: RemoteMCPServer
+              name: kagent-vision-mcp
+            tools:
+              - sre_get_recent_failures
+              - github_get_file
+        - mcp:
+            server:
+              kind: RemoteMCPServer
+              name: kagent-vision-mcp
+            tools:
+              - github_create_draft_pr
+            requireApproval: true
+  harnessRef:
+    name: kagent-default
