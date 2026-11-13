@@ -1,0 +1,12 @@
+apiVersion: api.kagent.dev/v1alpha3
+kind: Harness
+metadata:
+  name: kagent-default
+  namespace: kagent
+spec:
+  kagent:
+    compaction:
+      compactionInterval: 5
+      overlapSize: 2
+      tokenThreshold: 16000
+      eventRetentionSize: 8

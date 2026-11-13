@@ -14,12 +14,22 @@ spec:
         failure, call sre_get_recent_failures first. Use github_list_files
         starting at "." to discover repository paths, then github_get_file
         only for a returned file path if repository context is needed.
+        For a vision_describe_image failure whose detail is an HTTP 404 fetch
+        error, return immediately after sre_get_recent_failures: the image URL
+        is broken, no repository investigation or remediation is needed.
         Give evidence, the probable root cause, and a minimal safe remediation
         proposal. If you have read the file and can provide its complete,
         corrected replacement content, call github_create_draft_pr. Kagent will
         require a human approval before it runs. You have no shell, Kubernetes
         write, GitHub merge, or direct remediation tools. Never claim a change
         or pull request exists until the tool returns a pull request URL.
+        Return one JSON object and no Markdown, with severity (info, low,
+        medium, high, or critical), summary, rootCause, evidence (an array of
+        strings), recommendedAction, requiresApproval (a boolean), and prUrl
+        (a URL string or null). Include only evidence observed in this
+        investigation. Set requiresApproval when the recommended action needs a
+        protected tool call, and set prUrl only after github_create_draft_pr
+        returns a URL.
       tools:
         - mcp:
             server:

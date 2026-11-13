@@ -22,6 +22,7 @@ const (
 	defaultA2AURL = "http://kagent-controller.kagent.svc.cluster.local:8083/agents/kagent/kagent-vision"
 	defaultMCPURL = "http://kagent-vision-mcp.kagent.svc.cluster.local:8080/activity"
 	defaultUserID = "admin@kagent.dev"
+	hitlExtension  = "https://kagent.dev/extensions/hitl/v1"
 )
 
 //go:embed static/index.html
@@ -36,8 +37,20 @@ type app struct {
 }
 
 type chatRequest struct {
-	Message   string `json:"message"`
+	Message      string         `json:"message"`
+	ContextID    string         `json:"contextId"`
+	TaskID       string         `json:"taskId,omitempty"`
+	HITLResponse map[string]any `json:"-"`
+}
+
+type approvalRequest struct {
 	ContextID string `json:"contextId"`
+	TaskID    string `json:"taskId"`
+	Approvals []struct {
+		ID              string `json:"id"`
+		Approved        bool   `json:"approved"`
+		RejectionReason string `json:"rejectionReason,omitempty"`
+	} `json:"approvals"`
 }
 
 func main() {
@@ -55,6 +68,7 @@ func main() {
 	})
 	mux.HandleFunc("/api/chat", a.handleChat)
 	mux.HandleFunc("/api/sre", a.handleSRE)
+	mux.HandleFunc("/api/approval", a.handleApproval)
 	mux.HandleFunc("/api/activity", a.handleActivity)
 
 	log.Println("activity UI listening on :8090")
@@ -127,6 +141,43 @@ func (a *app) handleSRE(w http.ResponseWriter, r *http.Request) {
 	a.proxyA2A(w, r, a.sreA2AURL, input)
 }
 
+func (a *app) handleApproval(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method must be POST", http.StatusMethodNotAllowed)
+		return
+	}
+	defer r.Body.Close()
+
+	var approval approvalRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&approval); err != nil {
+		http.Error(w, "invalid approval body", http.StatusBadRequest)
+		return
+	}
+	approval.ContextID = strings.TrimSpace(approval.ContextID)
+	approval.TaskID = strings.TrimSpace(approval.TaskID)
+	if approval.ContextID == "" || approval.TaskID == "" || len(approval.Approvals) == 0 {
+		http.Error(w, "contextId, taskId, and approvals are required", http.StatusBadRequest)
+		return
+	}
+	for _, decision := range approval.Approvals {
+		if strings.TrimSpace(decision.ID) == "" {
+			http.Error(w, "approval id is required", http.StatusBadRequest)
+			return
+		}
+	}
+
+	input := chatRequest{
+		Message:   "The requested tool approval decision was submitted.",
+		ContextID: approval.ContextID,
+		TaskID:    approval.TaskID,
+		HITLResponse: map[string]any{
+			"type":      "tool_approval_response",
+			"approvals": approval.Approvals,
+		},
+	}
+	a.proxyA2A(w, r, a.sreA2AURL, input)
+}
+
 func (a *app) proxyA2A(w http.ResponseWriter, r *http.Request, endpoint string, input chatRequest) {
 	payload, err := sendMessagePayload(input)
 	if err != nil {
@@ -139,6 +190,7 @@ func (a *app) proxyA2A(w http.ResponseWriter, r *http.Request, endpoint string, 
 		return
 	}
 	request.Header.Set("A2A-Version", "1.0")
+	request.Header.Set("A2A-Extensions", hitlExtension)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-User-Id", a.userID)
 
@@ -202,6 +254,13 @@ func sendMessagePayload(input chatRequest) ([]byte, error) {
 	if input.ContextID != "" {
 		message["contextId"] = input.ContextID
 	}
+	if input.TaskID != "" {
+		message["taskId"] = input.TaskID
+	}
+	if input.HITLResponse != nil {
+		message["extensions"] = []string{hitlExtension}
+		message["metadata"] = map[string]any{hitlExtension: input.HITLResponse}
+	}
 	return json.Marshal(map[string]any{
 		"jsonrpc": "2.0",
 		"id":      messageID,
@@ -222,10 +281,14 @@ func copySSE(ctx context.Context, w io.Writer, flush http.Flusher, reader io.Rea
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 4096), 1<<20)
 	for scanner.Scan() {
-		if _, err := io.WriteString(w, scanner.Text()+"\n"); err != nil {
+		line := scanner.Text()
+		if _, err := io.WriteString(w, line+"\n"); err != nil {
 			return err
 		}
 		flush.Flush()
+		if strings.Contains(line, `"state":"TASK_STATE_COMPLETED"`) {
+			return nil
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

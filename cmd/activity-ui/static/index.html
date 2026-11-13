@@ -30,6 +30,8 @@
     .message { max-width:86%; padding:13px 15px; border-radius:14px; line-height:1.5; white-space:pre-wrap; }
     .user { align-self:end; background:#0891b2; color:#fff; } .agent { background:#f1f3f5; border:1px solid rgba(0,0,0,.08); } .empty { color:#71717a; margin:auto; text-align:center; }
     .markdown { white-space:normal; } .markdown > :first-child { margin-top:0; } .markdown > :last-child { margin-bottom:0; } .markdown p { margin:0 0 10px; } .markdown h1, .markdown h2, .markdown h3 { color:#0e7490; margin:14px 0 8px; line-height:1.25; } .markdown h1 { font-size:20px; } .markdown h2 { font-size:17px; } .markdown h3 { font-size:15px; } .markdown ul, .markdown ol { margin:6px 0 12px; padding-left:22px; } .markdown code { background:#f4f4f5; border-radius:4px; padding:2px 4px; font-family:ui-monospace, monospace; font-size:.9em; color:#0e7490; } .markdown pre { margin:10px 0; overflow:auto; background:#f4f4f5; border:1px solid rgba(0,0,0,.08); border-radius:5px; padding:10px; } .markdown pre code { background:transparent; padding:0; } .markdown table { width:100%; margin:10px 0; border-collapse:collapse; font-size:.9em; } .markdown th, .markdown td { border:1px solid rgba(0,0,0,.12); padding:7px; text-align:left; vertical-align:top; } .markdown th { background:#f1f3f5; } .markdown a { color:#0891b2; }
+    .approval-card { margin:0 16px 16px; padding:14px; border:1px solid #f59e0b; border-radius:5px; background:#fffbeb; } .approval-card[hidden] { display:none; } .approval-card h3 { margin:0 0 7px; color:#92400e; font-size:14px; } .approval-card p { margin:0 0 10px; font-size:12px; color:#78350f; } .approval-details { margin:0 0 12px; padding:10px; overflow:auto; border:1px solid #fde68a; background:#fff; font:11px/1.45 ui-monospace, monospace; white-space:pre-wrap; } .approval-actions { display:flex; gap:8px; } .approval-actions .deny { background:#fff; border:1px solid #dc2626; color:#b91c1c; }
+    .finding { display:grid; gap:12px; } .finding-severity { display:inline-block; width:max-content; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:700; text-transform:uppercase; background:#ecfeff; color:#0e7490; } .finding-severity.high, .finding-severity.critical { background:#fef2f2; color:#b91c1c; } .finding-section h3 { margin:0 0 4px; font-size:12px; color:#71717a; text-transform:uppercase; } .finding-section p { margin:0; } .finding-section ul { margin:0; padding-left:18px; }
     #sre-output > :first-child { margin-top:0; }
     form { display:flex; gap:10px; margin:18px 0; } .conversation-panel form { margin:0; padding:16px; border-top:1px solid rgba(0,0,0,.08); } input { min-width:0; flex:1; border:1px solid rgba(0,0,0,.15); border-radius:4px; padding:13px; color:inherit; background:#fff; font:inherit; } button { border:0; border-radius:4px; color:#fff; background:#0891b2; font-weight:700; padding:0 18px; cursor:pointer; } button:disabled { opacity:.55; cursor:wait; }
     .rail { position:sticky; top:16px; } .activity-rail { max-height:calc(100vh - 118px); display:flex; flex-direction:column; } .control-rail { position:sticky; top:16px; display:grid; gap:18px; }
@@ -51,6 +53,7 @@
       <section class="panel conversation-panel">
         <div class="panel-head"><h2>Conversation</h2><span class="muted">Streams from kagent A2A</span></div>
         <div id="conversation"><div id="empty" class="empty">Submit a public HTTPS image URL to start the Vision agent.</div></div>
+        <section id="approval" class="approval-card" hidden aria-live="polite"></section>
         <form id="chat"><input id="message" autocomplete="off" placeholder="https://example.com/image.jpg" aria-label="Public HTTPS image URL"><button id="submit">Analyze</button></form>
       </section>
     </section>
@@ -88,9 +91,11 @@
     let activityInitialized = false;
     const handledFailures = new Set();
     const handledTransportFailures = new Set();
+    const hitlExtension = "https://kagent.dev/extensions/hitl/v1";
+    let pendingApproval = null;
     const activityEntries = [];
     const activityKeys = new Set();
-    const savedViewKey = "kagent-vision-activity-view-v2";
+    const savedViewKey = "kagent-vision-activity-view-v3";
     const conversation = document.querySelector("#conversation");
     const activity = document.querySelector("#activity");
     const session = document.querySelector("#session");
@@ -106,8 +111,9 @@
     const sreOutput = document.querySelector("#sre-output");
     const imagePreview = document.querySelector("#image-preview");
     const imagePlaceholder = document.querySelector("#image-placeholder");
+    const approvalPanel = document.querySelector("#approval");
 
-    try { localStorage.removeItem("kagent-vision-activity-view-v1"); } catch (_) {}
+    try { localStorage.removeItem("kagent-vision-activity-view-v1"); localStorage.removeItem("kagent-vision-activity-view-v2"); } catch (_) {}
 
     function addMessage(kind, text) {
       document.querySelector("#empty")?.remove();
@@ -145,7 +151,9 @@
           sre: {
             markdown: sreOutput.dataset.markdown || "",
             text: sreOutput.textContent,
+            finding: sreOutput.dataset.finding || "",
           },
+          pendingApproval,
           phase: {
             title: currentPhase.textContent,
             detail: phaseDetail.textContent,
@@ -162,6 +170,7 @@
         if (saved.contextId) setContext(saved.contextId, false);
         if (saved.phase?.title) setPhase(saved.phase.title, saved.phase.detail || "", false);
         sreContextId = saved.sreContextId || "";
+        pendingApproval = saved.pendingApproval || null;
         for (const message of saved.messages || []) {
           const item = addMessage(message.kind, message.text);
           if (message.kind === "user") showImagePreview(message.text);
@@ -170,7 +179,9 @@
             renderMarkdown(item, message.markdown);
           }
         }
-        if (saved.sre?.markdown) {
+        if (saved.sre?.finding) {
+          showStructuredFinding(JSON.parse(saved.sre.finding), false);
+        } else if (saved.sre?.markdown) {
           resultSource.textContent = saved.resultSource || "Latest response";
           sreOutput.dataset.markdown = saved.sre.markdown;
           renderMarkdown(sreOutput, saved.sre.markdown);
@@ -178,6 +189,7 @@
           resultSource.textContent = saved.resultSource || "Latest response";
           sreOutput.textContent = saved.sre.text;
         }
+        renderApproval();
         for (const event of [...(saved.activity || [])].reverse()) {
           addActivity(event.label, event.detail, event.css, event.at, event.key, false);
         }
@@ -277,9 +289,51 @@
     }
     function showLatestResult(source, markdown) {
       resultSource.textContent = source;
+      sreOutput.dataset.finding = "";
       sreOutput.dataset.markdown = markdown;
       renderMarkdown(sreOutput, markdown);
       persistView();
+    }
+    function structuredFinding(parts) {
+      for (const part of parts || []) {
+        const candidate = typeof part.data === "object" ? (part.data?.data || part.data) : part.text;
+        if (candidate && typeof candidate === "object" && typeof candidate.summary === "string" && Array.isArray(candidate.evidence)) return candidate;
+        if (typeof candidate === "string") {
+          try {
+            const parsed = JSON.parse(candidate);
+            if (typeof parsed.summary === "string" && Array.isArray(parsed.evidence)) return parsed;
+          } catch (_) {}
+        }
+      }
+      return null;
+    }
+    function showStructuredFinding(finding, persist = true) {
+      resultSource.textContent = "SRE incident finding";
+      sreOutput.dataset.markdown = "";
+      sreOutput.dataset.finding = JSON.stringify(finding);
+      sreOutput.replaceChildren();
+      const card = document.createElement("div");
+      card.className = "finding";
+      const severity = document.createElement("span");
+      severity.className = "finding-severity " + String(finding.severity || "info").toLowerCase();
+      severity.textContent = finding.severity || "info";
+      card.append(severity);
+      for (const [label, value] of [["Summary", finding.summary], ["Root cause", finding.rootCause], ["Recommended action", finding.recommendedAction]]) {
+        if (!value) continue;
+        const section = document.createElement("section"); section.className = "finding-section";
+        const heading = document.createElement("h3"); heading.textContent = label;
+        const text = document.createElement("p"); text.textContent = value;
+        section.append(heading, text); card.append(section);
+      }
+      if (finding.evidence?.length) {
+        const section = document.createElement("section"); section.className = "finding-section";
+        const heading = document.createElement("h3"); heading.textContent = "Evidence";
+        const list = document.createElement("ul");
+        finding.evidence.forEach(item => { const row = document.createElement("li"); row.textContent = item; list.append(row); });
+        section.append(heading, list); card.append(section);
+      }
+      sreOutput.append(card);
+      if (persist) persistView();
     }
     function textParts(parts) { return (parts || []).map(p => p.text || "").join(""); }
     function transportFailure(parts) {
@@ -291,8 +345,64 @@
       }
       return null;
     }
+    function inspectApproval(result) {
+        const candidates = [
+          {task: result.task, status: result.task?.status},
+          {task: result.statusUpdate, status: result.statusUpdate?.status},
+        ];
+        for (const candidate of candidates) {
+          const request = candidate.status?.message?.metadata?.[hitlExtension];
+          if (request?.type !== "tool_approval_request") continue;
+          pendingApproval = {
+            taskId: candidate.task?.id || candidate.task?.taskId || "",
+            contextId: candidate.task?.contextId || result.task?.contextId || sreContextId,
+            request,
+          };
+          if (pendingApproval.taskId && pendingApproval.contextId) {
+            renderApproval();
+            setPhase("Approval required", "Review the requested SRE action before it can run.");
+            addActivity("Approval required", request.calls?.map(call => call.name).join(", ") || "protected tool", "tool");
+          }
+        }
+      }
+      function renderApproval() {
+        approvalPanel.replaceChildren();
+        if (!pendingApproval) { approvalPanel.hidden = true; return; }
+        approvalPanel.hidden = false;
+        const heading = document.createElement("h3"); heading.textContent = "Approval required";
+        const detail = document.createElement("p"); detail.textContent = "The SRE agent is waiting before it performs this protected action.";
+        const data = document.createElement("pre"); data.className = "approval-details";
+        data.textContent = (pendingApproval.request.calls || []).map(call => `${call.name}\n${JSON.stringify(call.args || {}, null, 2)}`).join("\n\n");
+        const actions = document.createElement("div"); actions.className = "approval-actions";
+        const reject = document.createElement("button"); reject.type = "button"; reject.className = "deny"; reject.textContent = "Reject";
+        const approve = document.createElement("button"); approve.type = "button"; approve.textContent = "Approve";
+        reject.addEventListener("click", () => submitApproval(false));
+        approve.addEventListener("click", () => submitApproval(true));
+        actions.append(reject, approve); approvalPanel.append(heading, detail, data, actions);
+      }
+      async function submitApproval(approved) {
+        if (!pendingApproval) return;
+        const decision = pendingApproval;
+        approvalPanel.querySelectorAll("button").forEach(button => { button.disabled = true; });
+        try {
+          const approvals = (decision.request.calls || []).map(call => ({id:call.id, approved, rejectionReason:approved ? "" : "Denied in the activity dashboard."}));
+          const response = await fetch("/api/approval", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({contextId:decision.contextId, taskId:decision.taskId, approvals})});
+          if (!response.ok || !response.body) throw new Error(await response.text());
+          pendingApproval = null; renderApproval();
+          const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = "";
+          while (true) {
+            const {value, done} = await reader.read(); if (done) break;
+            buffer += decoder.decode(value, {stream:true}); const records = buffer.split("\n\n"); buffer = records.pop();
+            for (const record of records) { const data = record.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).join("\n"); if (data) processSREEvent(JSON.parse(data)); }
+          }
+        } catch (error) {
+          addActivity("Approval response", error.message, "fail");
+          renderApproval();
+        }
+    }
     function processEvent(payload, agentMessage) {
       const result = payload.result || {};
+      inspectApproval(result);
       if (result.statusUpdate) {
         const status = result.statusUpdate.status.state.replace("TASK_STATE_", "").toLowerCase();
         setPhase(status === "working" ? "Vision agent is working" : "Vision task " + status, "The agent is processing your request.");
@@ -339,6 +449,8 @@
       if (submit.disabled) return;
       contextId = "";
       sreContextId = "";
+      pendingApproval = null;
+      renderApproval();
       handledTransportFailures.clear();
       conversation.replaceChildren();
       const empty = document.createElement("div");
@@ -365,6 +477,7 @@
         const response = await fetch("/api/activity");
         const body = await response.json();
         const events = body.events || [];
+        if (events.length < activityCursor) activityCursor = 0;
         const newEvents = events.slice(activityCursor);
         for (const event of newEvents) {
           addActivity(
@@ -419,12 +532,15 @@
     function processSREEvent(payload) {
       const result = payload.result || {};
       if (result.statusUpdate) {
+        inspectApproval(result);
         addActivity("SRE status", result.statusUpdate.status.state.replace("TASK_STATE_", "").toLowerCase(), "tool");
       }
       if (result.artifactUpdate) {
         const update = result.artifactUpdate;
+        const finding = structuredFinding(update.artifact?.parts);
+        if (finding) showStructuredFinding(finding);
         const text = textParts(update.artifact?.parts);
-        if (text) {
+        if (text && !finding) {
           const completeText = update.append ? (sreOutput.dataset.markdown || "") + text : text;
           showLatestResult("SRE agent finding", completeText);
         }
@@ -432,8 +548,11 @@
       }
       if (result.task?.contextId) sreContextId = result.task.contextId;
       if (result.task?.status?.state === "TASK_STATE_COMPLETED") {
+        pendingApproval = null; renderApproval();
+        const finding = structuredFinding(result.task.status.message?.parts);
+        if (finding) showStructuredFinding(finding);
         const finalText = textParts(result.task.status.message?.parts);
-        if (finalText) {
+        if (finalText && !finding) {
           sreOutput.dataset.markdown = finalText;
           showLatestResult("SRE agent finding", finalText);
         }
@@ -476,7 +595,7 @@
         agentMessage.textContent = "Request failed: " + error.message;
         persistView();
         addActivity("Request", error.message, "fail");
-        state.textContent = "failed";
+        setPhase("Vision request failed", error.message);
       } finally {
         submit.disabled = false;
         refreshToolActivity();
