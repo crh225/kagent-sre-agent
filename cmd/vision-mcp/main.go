@@ -58,6 +58,10 @@ type githubFileArguments struct {
 	Path string `json:"path"`
 }
 
+type githubDirectoryArguments struct {
+	Path string `json:"path"`
+}
+
 type draftPRArguments struct {
 	Title   string `json:"title"`
 	Body    string `json:"body"`
@@ -219,6 +223,17 @@ func toolDefinitions() []any {
 			},
 		},
 		map[string]any{
+			"name":        "github_list_files",
+			"description": "List up to 100 direct entries in a directory of the public crh225/kagent-sre-agent main branch. Use path \".\" for the repository root.",
+			"inputSchema": map[string]any{
+				"type":     "object",
+				"required": []string{"path"},
+				"properties": map[string]any{
+					"path": map[string]string{"type": "string", "description": "Repository-relative directory path, or \".\" for the root."},
+				},
+			},
+		},
+		map[string]any{
 			"name":        "github_create_draft_pr",
 			"description": "Create a draft PR for a complete file replacement in crh225/kagent-sre-agent. This tool is approval-gated by the SRE agent configuration.",
 			"inputSchema": map[string]any{
@@ -247,6 +262,8 @@ func (s *server) callTool(ctx context.Context, rawParams json.RawMessage) (any, 
 		return s.recentFailures(), nil
 	case "github_get_file":
 		return s.githubGetFile(ctx, params.Arguments), nil
+	case "github_list_files":
+		return s.githubListFiles(ctx, params.Arguments), nil
 	case "github_create_draft_pr":
 		return s.createDraftPRTool(ctx, params.Arguments), nil
 	default:
@@ -451,12 +468,19 @@ func (s *server) githubGetFile(ctx context.Context, rawArguments json.RawMessage
 	if response.StatusCode != http.StatusOK {
 		return toolError(fmt.Errorf("read GitHub file: received HTTP %d", response.StatusCode))
 	}
+	var rawResponse json.RawMessage
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&rawResponse); err != nil {
+		return toolError(fmt.Errorf("decode GitHub response: %w", err))
+	}
+	if len(rawResponse) > 0 && rawResponse[0] == '[' {
+		return toolError(errors.New("path is a directory; use github_list_files to discover its files"))
+	}
 	var file struct {
 		Content  string `json:"content"`
 		Encoding string `json:"encoding"`
 		Size     int    `json:"size"`
 	}
-	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&file); err != nil {
+	if err := json.Unmarshal(rawResponse, &file); err != nil {
 		return toolError(fmt.Errorf("decode GitHub file: %w", err))
 	}
 	if file.Encoding != "base64" {
@@ -478,6 +502,52 @@ func (s *server) githubGetFile(ctx context.Context, rawArguments json.RawMessage
 	})
 }
 
+func (s *server) githubListFiles(ctx context.Context, rawArguments json.RawMessage) any {
+	var arguments githubDirectoryArguments
+	if err := json.Unmarshal(rawArguments, &arguments); err != nil {
+		return toolError(fmt.Errorf("invalid GitHub tool arguments: %w", err))
+	}
+	path, err := repositoryDirectory(arguments.Path)
+	if err != nil {
+		return toolError(err)
+	}
+	endpoint := "https://api.github.com/repos/crh225/kagent-sre-agent/contents"
+	if path != "." {
+		endpoint += "/" + path
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?ref=main", nil)
+	if err != nil {
+		return toolError(fmt.Errorf("create GitHub request: %w", err))
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("User-Agent", "kagent-vision-mcp")
+	response, err := s.imageClient.Do(request)
+	if err != nil {
+		return toolError(fmt.Errorf("list GitHub files: %w", err))
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return toolError(fmt.Errorf("list GitHub files: received HTTP %d", response.StatusCode))
+	}
+	var entries []struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+		Type string `json:"type"`
+		Size int    `json:"size"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&entries); err != nil {
+		return toolError(errors.New("path is a file; use github_get_file to read it"))
+	}
+	if len(entries) > 100 {
+		entries = entries[:100]
+	}
+	return toolText(map[string]any{
+		"repository": "crh225/kagent-sre-agent",
+		"path":       path,
+		"entries":    entries,
+	})
+}
+
 func repositoryPath(value string) (string, error) {
 	value = strings.Trim(strings.TrimSpace(value), "/")
 	if value == "" || strings.Contains(value, "..") || strings.Contains(value, "\\") {
@@ -493,6 +563,14 @@ func repositoryPath(value string) (string, error) {
 		return "", errors.New("path contains unsupported characters")
 	}
 	return value, nil
+}
+
+func repositoryDirectory(value string) (string, error) {
+	value = strings.Trim(strings.TrimSpace(value), "/")
+	if value == "." {
+		return value, nil
+	}
+	return repositoryPath(value)
 }
 
 func toolError(err error) map[string]any {

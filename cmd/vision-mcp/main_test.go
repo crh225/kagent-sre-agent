@@ -34,7 +34,7 @@ func TestToolsListAdvertisesExpectedTools(t *testing.T) {
 	for _, tool := range body.Result.Tools {
 		found[tool.Name] = true
 	}
-	for _, name := range []string{toolName, "sre_get_recent_failures", "github_get_file", "github_create_draft_pr"} {
+	for _, name := range []string{toolName, "sre_get_recent_failures", "github_list_files", "github_get_file", "github_create_draft_pr"} {
 		if !found[name] {
 			t.Errorf("tools = %#v, want %q", body.Result.Tools, name)
 		}
@@ -56,6 +56,19 @@ func TestRepositoryPathRejectsTraversal(t *testing.T) {
 	}
 	if path != "cmd/vision-mcp/main.go" {
 		t.Fatalf("path = %q", path)
+	}
+}
+
+func TestRepositoryDirectoryAcceptsRootOnlyExplicitly(t *testing.T) {
+	path, err := repositoryDirectory(".")
+	if err != nil {
+		t.Fatalf("repositoryDirectory root: %v", err)
+	}
+	if path != "." {
+		t.Fatalf("path = %q, want .", path)
+	}
+	if _, err := repositoryDirectory("../"); err == nil {
+		t.Fatal("repositoryDirectory accepted traversal")
 	}
 }
 
