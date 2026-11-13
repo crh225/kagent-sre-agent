@@ -10,12 +10,12 @@
     header { display:flex; justify-content:space-between; align-items:center; padding:24px 32px; }
     .brand { display:flex; gap:12px; align-items:center; font-size:20px; font-weight:700; } .mark { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:#7c5cff; }
     .badge { color:#b9ffcf; background:#123d2e; border:1px solid #286a50; padding:6px 10px; border-radius:999px; font-size:12px; }
-    main { width:100%; padding:0 32px 32px; }
+    main { width:100%; min-height:calc(100vh - 86px); padding:0 32px 32px; display:grid; grid-template-columns:280px minmax(0, 1fr) 340px; gap:18px; align-items:start; }
     .panel { background:rgba(13,18,33,.88); border:1px solid #273351; border-radius:16px; overflow:hidden; box-shadow:0 20px 70px rgba(0,0,0,.25); }
     .panel-head { padding:16px 18px; border-bottom:1px solid #273351; display:flex; justify-content:space-between; align-items:center; }
     .panel-head h2 { font-size:14px; letter-spacing:.03em; margin:0; } .muted { color:#99a5c5; font-size:12px; }
-    .workspace { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:18px; margin-bottom:18px; }
-    .workspace-panel { padding:18px; min-height:350px; }
+    .main-workspace { display:grid; gap:18px; min-width:0; }
+    .workspace-panel { padding:18px; min-height:300px; }
     .workspace-panel h2 { margin:0 0 12px; font-size:14px; }
     .source-preview { aspect-ratio:16 / 9; border-radius:12px; overflow:hidden; background:#02050d; display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
     .source-preview img { width:100%; height:100%; object-fit:contain; } .source-preview img.hidden { display:none; } .source-preview span { color:#667391; font-size:13px; padding:24px; text-align:center; }
@@ -23,23 +23,30 @@
     .control-label { display:block; color:#99a5c5; font-size:12px; margin-bottom:7px; }
     .phase { font-size:20px; font-weight:700; line-height:1.25; } .phase-detail { margin-top:8px; color:#c8d2eb; line-height:1.45; }
     .tool-name { color:#b6a8ff; font-family:ui-monospace, monospace; font-size:13px; font-weight:700; word-break:break-word; } .tool-detail { margin-top:8px; color:#c8d2eb; line-height:1.45; }
-    .result-panel { margin-bottom:18px; } .result-source { color:#99a5c5; font-size:12px; } .latest-result { min-height:230px; padding:20px; color:#c8d2eb; font-size:14px; line-height:1.5; }
+    .result-source { color:#99a5c5; font-size:12px; } .latest-result { min-height:330px; padding:20px; color:#c8d2eb; font-size:14px; line-height:1.5; }
     #conversation { padding:20px; min-height:300px; display:flex; flex-direction:column; gap:16px; }
     .message { max-width:86%; padding:13px 15px; border-radius:14px; line-height:1.5; white-space:pre-wrap; }
     .user { align-self:end; background:#6452d8; } .agent { background:#19233b; border:1px solid #2d3e64; } .empty { color:#9aa7c7; margin:auto; text-align:center; }
     .markdown { white-space:normal; } .markdown > :first-child { margin-top:0; } .markdown > :last-child { margin-bottom:0; } .markdown p { margin:0 0 10px; } .markdown h1, .markdown h2, .markdown h3 { margin:14px 0 8px; line-height:1.25; } .markdown h1 { font-size:20px; } .markdown h2 { font-size:17px; } .markdown h3 { font-size:15px; } .markdown ul, .markdown ol { margin:6px 0 12px; padding-left:22px; } .markdown code { background:#0b1020; border-radius:4px; padding:2px 4px; font-family:ui-monospace, monospace; font-size:.9em; } .markdown pre { margin:10px 0; overflow:auto; background:#0b1020; border:1px solid #2d3e64; border-radius:8px; padding:10px; } .markdown pre code { background:transparent; padding:0; } .markdown table { width:100%; margin:10px 0; border-collapse:collapse; font-size:.9em; } .markdown th, .markdown td { border:1px solid #2d3e64; padding:7px; text-align:left; vertical-align:top; } .markdown th { background:#16213a; } .markdown a { color:#b6a8ff; }
     #sre-output > :first-child { margin-top:0; }
     form { display:flex; gap:10px; margin:18px 0; } input { min-width:0; flex:1; border:1px solid #3a4b77; border-radius:10px; padding:13px; color:inherit; background:#0b1020; font:inherit; } button { border:0; border-radius:10px; color:white; background:#7357ef; font-weight:700; padding:0 18px; cursor:pointer; } button:disabled { opacity:.55; cursor:wait; }
-    #activity { max-height:260px; overflow-y:auto; list-style:none; padding:10px 18px 14px; margin:0; display:flex; flex-direction:column; gap:8px; } .event { border-left:2px solid #536a9d; padding-left:9px; font-size:12px; } .event .time { color:#8d9bbd; font-size:11px; margin-top:2px; } .event.tool { border-color:#ffb45c; } .event.done { border-color:#5ce6ad; } .event.fail { border-color:#ff7591; }
+    .rail { position:sticky; top:16px; } .activity-rail { max-height:calc(100vh - 118px); display:flex; flex-direction:column; } .control-rail { position:sticky; top:16px; display:grid; gap:18px; }
+    .activity-rail .panel-head { background:linear-gradient(90deg, rgba(124,92,255,.16), transparent); } .control-panel .panel-head { background:linear-gradient(90deg, rgba(92,230,173,.12), transparent); }
+    #activity { min-height:0; flex:1; overflow-y:auto; list-style:none; padding:10px 18px 14px; margin:0; display:flex; flex-direction:column; gap:8px; } .event { border-left:2px solid #536a9d; padding-left:9px; font-size:12px; } .event .time { color:#8d9bbd; font-size:11px; margin-top:2px; } .event.tool { border-color:#ffb45c; } .event.done { border-color:#5ce6ad; } .event.fail { border-color:#ff7591; }
     .session { margin-top:18px; padding-top:12px; border-top:1px solid #273351; font-family:ui-monospace, monospace; font-size:11px; color:#99a5c5; word-break:break-all; }
-    .history { margin-bottom:12px; } .history summary, .ledger summary { cursor:pointer; padding:16px 18px; font-weight:700; font-size:14px; } .history[open] summary, .ledger[open] summary { border-bottom:1px solid #273351; }
-    @media (max-width: 760px) { main { padding:0 12px 12px; } header { padding:16px 12px; } .workspace { grid-template-columns:1fr; gap:12px; } .workspace-panel { min-height:0; } }
+    .history summary { cursor:pointer; padding:16px 18px; font-weight:700; font-size:14px; } .history[open] summary { border-bottom:1px solid #273351; }
+    @media (max-width: 980px) { main { grid-template-columns:220px minmax(0, 1fr); } .control-rail { grid-column:1 / -1; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); } .rail, .control-rail { position:static; } .activity-rail { max-height:600px; } }
+    @media (max-width: 700px) { main { display:block; padding:0 12px 12px; } header { padding:16px 12px; } .activity-rail, .control-rail, .main-workspace { margin-bottom:12px; } .control-rail { display:grid; grid-template-columns:1fr; } .workspace-panel { min-height:0; } }
   </style>
 </head>
 <body>
   <header><div class="brand"><div class="mark">✦</div>Kagent Vision Activity</div><div class="badge">local kind · Agent Substrate</div></header>
   <main>
-    <section class="workspace">
+    <aside class="panel rail activity-rail">
+      <div class="panel-head"><h2>Activity stream</h2><span class="muted">live MCP events</span></div>
+      <ul id="activity"></ul>
+    </aside>
+    <section class="main-workspace">
       <article class="panel workspace-panel">
         <h2>Source image</h2>
         <div class="source-preview">
@@ -48,33 +55,31 @@
         </div>
         <div class="muted">The image is fetched and analyzed by the Vision MCP tool.</div>
       </article>
-      <article class="panel workspace-panel">
-        <h2>Analyze image</h2>
-        <label class="control-label" for="message">Public HTTPS image URL</label>
-        <form id="chat"><input id="message" autocomplete="off" placeholder="https://example.com/image.jpg" aria-label="Message"><button id="submit">Analyze</button></form>
-        <div id="current-phase" class="phase">Ready for an image URL</div>
-        <div id="phase-detail" class="phase-detail">Submit a public HTTPS image to begin.</div>
-        <div id="current-tool" class="tool-name" style="margin-top:16px">Waiting for work</div>
-        <div id="tool-detail" class="tool-detail">The active agent step will appear here.</div>
-        <div id="session" class="session">Session will be created on your first request.</div>
-      </article>
+      <section class="panel result-panel">
+        <div class="panel-head"><h2>Latest result</h2><span id="result-source" class="result-source">Vision or SRE response</span></div>
+        <div id="sre-output" class="latest-result">No result yet.</div>
+      </section>
     </section>
-    <section class="panel result-panel">
-      <div class="panel-head"><h2>Latest result</h2><span id="result-source" class="result-source">Vision or SRE response</span></div>
-      <div id="sre-output" class="latest-result">No result yet.</div>
-    </section>
-    <section class="panel history">
-      <details>
-        <summary>Conversation transcript</summary>
-        <div id="conversation"><div id="empty" class="empty">Submit an image URL to see the agent conversation.</div></div>
-      </details>
-    </section>
-    <section class="panel ledger">
-      <details>
-        <summary>MCP event ledger (shared local history)</summary>
-        <ul id="activity"></ul>
-      </details>
-    </section>
+    <aside class="control-rail">
+      <section class="panel control-panel">
+        <div class="panel-head"><h2>Analyze image</h2><span class="muted">kagent A2A</span></div>
+        <div style="padding:18px">
+          <label class="control-label" for="message">Public HTTPS image URL</label>
+          <form id="chat"><input id="message" autocomplete="off" placeholder="https://example.com/image.jpg" aria-label="Message"><button id="submit">Analyze</button></form>
+          <div id="current-phase" class="phase">Ready for an image URL</div>
+          <div id="phase-detail" class="phase-detail">Submit a public HTTPS image to begin.</div>
+          <div id="current-tool" class="tool-name" style="margin-top:16px">Waiting for work</div>
+          <div id="tool-detail" class="tool-detail">The active agent step will appear here.</div>
+          <div id="session" class="session">Session will be created on your first request.</div>
+        </div>
+      </section>
+      <section class="panel history">
+        <details>
+          <summary>Conversation transcript</summary>
+          <div id="conversation"><div id="empty" class="empty">Submit an image URL to see the agent conversation.</div></div>
+        </details>
+      </section>
+    </aside>
   </main>
   <script>
     let contextId = "";
@@ -82,6 +87,7 @@
     let activityCursor = 0;
     let activityInitialized = false;
     const handledFailures = new Set();
+    const handledTransportFailures = new Set();
     const activityEntries = [];
     const activityKeys = new Set();
     const savedViewKey = "kagent-vision-activity-view-v2";
@@ -275,6 +281,15 @@
       persistView();
     }
     function textParts(parts) { return (parts || []).map(p => p.text || "").join(""); }
+    function transportFailure(parts) {
+      for (const part of parts || []) {
+        const output = part.data?.response?.output;
+        if (typeof output !== "string" || !output.includes("rejected by transport")) continue;
+        const tool = part.data?.name || "MCP tool";
+        return {tool, detail: output};
+      }
+      return null;
+    }
     function processEvent(payload, agentMessage) {
       const result = payload.result || {};
       if (result.statusUpdate) {
@@ -284,6 +299,14 @@
       }
       if (result.artifactUpdate) {
         const update = result.artifactUpdate;
+        const failure = transportFailure(update.artifact?.parts);
+        if (failure) {
+          const key = `${failure.tool}:${failure.detail}`;
+          if (!handledTransportFailures.has(key)) {
+            handledTransportFailures.add(key);
+            startSRE(failure);
+          }
+        }
         const text = textParts(update.artifact?.parts);
         if (text) {
           const completeText = update.append ? (agentMessage.dataset.markdown || "") + text : text;
