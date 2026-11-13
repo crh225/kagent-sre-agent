@@ -632,7 +632,7 @@ func (s *server) fetchImage(ctx context.Context, rawURL string) ([]byte, string,
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("fetch image: received HTTP %d", response.StatusCode)
+		return nil, "", fmt.Errorf("fetch image %q: received HTTP %d", u.Redacted(), response.StatusCode)
 	}
 
 	mimeType := strings.Split(response.Header.Get("Content-Type"), ";")[0]
