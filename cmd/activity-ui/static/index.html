@@ -5,43 +5,43 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kagent Vision Activity</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
-    :root { color-scheme:dark; font-family:"DM Sans", ui-sans-serif, system-ui, sans-serif; background:#0b0f14; color:#e7efec; }
-    * { box-sizing:border-box; } body { margin:0; min-height:100vh; background:radial-gradient(circle at 76% -12%, #0891b226 0, transparent 34%), radial-gradient(circle at 12% 100%, #c9168014 0, transparent 30%), #0b0f14; }
-    header { display:flex; justify-content:space-between; align-items:center; padding:24px 32px; border-bottom:1px solid #36515b55; }
-    .brand { display:flex; gap:12px; align-items:center; font-family:"Barlow Condensed", sans-serif; font-size:25px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; } .mark { display:grid; place-items:center; width:38px; height:38px; border-radius:7px; background:linear-gradient(135deg,#0891b2,#c91680); box-shadow:0 0 24px #0891b244; }
-    .badge { color:#aee9de; background:#0d1920; border:1px solid #36515b; padding:6px 10px; border-radius:4px; font-size:10px; letter-spacing:.12em; text-transform:uppercase; }
+    :root { color-scheme:light; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background:#f8f9fa; color:#3f3f46; }
+    * { box-sizing:border-box; } body { margin:0; min-height:100vh; background:radial-gradient(circle at 76% -12%, #0891b212 0, transparent 34%), radial-gradient(circle at 12% 100%, #ec48990c 0, transparent 30%), #f8f9fa; }
+    header { display:flex; justify-content:space-between; align-items:center; padding:24px 32px; background:#fff; border-bottom:1px solid rgba(0,0,0,.08); }
+    .brand { display:flex; gap:12px; align-items:center; font-size:21px; font-weight:700; letter-spacing:-.02em; } .mark { display:grid; place-items:center; width:38px; height:38px; border-radius:6px; background:linear-gradient(135deg,#0891b2,#22d3ee); box-shadow:0 8px 20px #0891b22b; color:#fff; }
+    .header-actions { display:flex; gap:10px; align-items:center; } .badge { color:#0e7490; background:#ecfeff; border:1px solid #a5f3fc; padding:6px 10px; border-radius:4px; font-size:11px; letter-spacing:.04em; }
+    #new-session { padding:7px 10px; color:#0e7490; background:#fff; border:1px solid #0891b2; font-size:12px; }
     main { width:100%; min-height:calc(100vh - 86px); padding:22px 32px 32px; display:grid; grid-template-columns:280px minmax(0, 1fr) 340px; gap:18px; align-items:start; }
-    .panel { background:linear-gradient(145deg,#10181af5,#0d1418f5); border:1px solid #36515b; border-radius:8px; overflow:hidden; box-shadow:0 24px 80px #00000052; }
-    .panel-head { padding:13px 16px; border-bottom:1px solid #36515b; display:flex; justify-content:space-between; align-items:center; }
-    .panel-head h2 { font-family:"Barlow Condensed", sans-serif; font-size:17px; letter-spacing:.1em; margin:0; text-transform:uppercase; } .muted { color:#91a9ad; font-size:11px; }
+    .panel { background:#fff; border:1px solid rgba(0,0,0,.08); border-radius:6px; overflow:hidden; box-shadow:0 10px 28px rgba(0,0,0,.04); }
+    .panel-head { padding:13px 16px; border-bottom:1px solid rgba(0,0,0,.08); display:flex; justify-content:space-between; align-items:center; }
+    .panel-head h2 { font-size:14px; letter-spacing:.01em; margin:0; } .muted { color:#71717a; font-size:11px; }
     .main-workspace { display:grid; gap:18px; min-width:0; }
     .workspace-panel { padding:18px; }
     .workspace-panel h2 { margin:0 0 12px; font-size:14px; }
-    .source-preview { aspect-ratio:16 / 9; border-radius:5px; overflow:hidden; background:#071015; border:1px solid #36515b; display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
-    .source-preview img { width:100%; height:100%; object-fit:contain; } .source-preview img.hidden { display:none; } .source-preview span { color:#789096; font-size:13px; padding:24px; text-align:center; }
+    .source-preview { aspect-ratio:16 / 9; border-radius:5px; overflow:hidden; background:#f1f3f5; border:1px solid rgba(0,0,0,.08); display:flex; align-items:center; justify-content:center; margin-bottom:14px; }
+    .source-preview img { width:100%; height:100%; object-fit:contain; } .source-preview img.hidden { display:none; } .source-preview span { color:#71717a; font-size:13px; padding:24px; text-align:center; }
     .source-preview span.hidden { display:none; }
-    .control-label { display:block; color:#99a5c5; font-size:12px; margin-bottom:7px; }
-    .phase { color:#e6eee8; font-family:"Barlow Condensed", sans-serif; font-size:24px; font-weight:700; letter-spacing:.02em; line-height:1.1; } .phase-detail { margin-top:8px; color:#b1c2c2; line-height:1.45; }
-    .tool-name { color:#8aefda; font-family:ui-monospace, monospace; font-size:12px; font-weight:700; word-break:break-word; } .tool-detail { margin-top:8px; color:#b1c2c2; line-height:1.45; }
-    .result-source { color:#91a9ad; font-size:11px; letter-spacing:.08em; text-transform:uppercase; } .latest-result { min-height:130px; max-height:260px; overflow:auto; padding:18px; color:#cfdfdc; font-size:13px; line-height:1.6; }
+    .control-label { display:block; color:#71717a; font-size:12px; margin-bottom:7px; }
+    .phase { color:#27272a; font-size:22px; font-weight:700; letter-spacing:-.02em; line-height:1.15; } .phase-detail { margin-top:8px; color:#52525b; line-height:1.45; }
+    .tool-name { color:#0e7490; font-family:ui-monospace, monospace; font-size:12px; font-weight:700; word-break:break-word; } .tool-detail { margin-top:8px; color:#52525b; line-height:1.45; }
+    .result-source { color:#71717a; font-size:11px; } .latest-result { min-height:130px; max-height:260px; overflow:auto; padding:18px; color:#3f3f46; font-size:13px; line-height:1.6; }
     .conversation-panel { min-height:calc(100vh - 118px); display:flex; flex-direction:column; } .conversation-panel #conversation { min-height:360px; flex:1; overflow-y:auto; }
     #conversation { padding:20px; display:flex; flex-direction:column; gap:16px; }
     .message { max-width:86%; padding:13px 15px; border-radius:14px; line-height:1.5; white-space:pre-wrap; }
-    .user { align-self:end; background:linear-gradient(135deg,#0891b2,#0e7490); } .agent { background:#0d1920; border:1px solid #36515b; } .empty { color:#789096; margin:auto; text-align:center; }
-    .markdown { white-space:normal; } .markdown > :first-child { margin-top:0; } .markdown > :last-child { margin-bottom:0; } .markdown p { margin:0 0 10px; } .markdown h1, .markdown h2, .markdown h3 { color:#b7f5e8; margin:14px 0 8px; line-height:1.25; } .markdown h1 { font-size:20px; } .markdown h2 { font-size:17px; } .markdown h3 { font-size:15px; } .markdown ul, .markdown ol { margin:6px 0 12px; padding-left:22px; } .markdown code { background:#0d1920; border-radius:4px; padding:2px 4px; font-family:ui-monospace, monospace; font-size:.9em; } .markdown pre { margin:10px 0; overflow:auto; background:#09141c; border:1px solid #36515b; border-radius:5px; padding:10px; } .markdown pre code { background:transparent; padding:0; } .markdown table { width:100%; margin:10px 0; border-collapse:collapse; font-size:.9em; } .markdown th, .markdown td { border:1px solid #46616b; padding:7px; text-align:left; vertical-align:top; } .markdown th { background:#132126; } .markdown a { color:#8aefda; }
+    .user { align-self:end; background:#0891b2; color:#fff; } .agent { background:#f1f3f5; border:1px solid rgba(0,0,0,.08); } .empty { color:#71717a; margin:auto; text-align:center; }
+    .markdown { white-space:normal; } .markdown > :first-child { margin-top:0; } .markdown > :last-child { margin-bottom:0; } .markdown p { margin:0 0 10px; } .markdown h1, .markdown h2, .markdown h3 { color:#0e7490; margin:14px 0 8px; line-height:1.25; } .markdown h1 { font-size:20px; } .markdown h2 { font-size:17px; } .markdown h3 { font-size:15px; } .markdown ul, .markdown ol { margin:6px 0 12px; padding-left:22px; } .markdown code { background:#f4f4f5; border-radius:4px; padding:2px 4px; font-family:ui-monospace, monospace; font-size:.9em; color:#0e7490; } .markdown pre { margin:10px 0; overflow:auto; background:#f4f4f5; border:1px solid rgba(0,0,0,.08); border-radius:5px; padding:10px; } .markdown pre code { background:transparent; padding:0; } .markdown table { width:100%; margin:10px 0; border-collapse:collapse; font-size:.9em; } .markdown th, .markdown td { border:1px solid rgba(0,0,0,.12); padding:7px; text-align:left; vertical-align:top; } .markdown th { background:#f1f3f5; } .markdown a { color:#0891b2; }
     #sre-output > :first-child { margin-top:0; }
-    form { display:flex; gap:10px; margin:18px 0; } .conversation-panel form { margin:0; padding:16px; border-top:1px solid #36515b; } input { min-width:0; flex:1; border:1px solid #46616b; border-radius:4px; padding:13px; color:inherit; background:#09141c; font:inherit; } button { border:0; border-radius:4px; color:#071318; background:linear-gradient(135deg,#8aefda,#62c6d6); font-weight:800; padding:0 18px; cursor:pointer; } button:disabled { opacity:.55; cursor:wait; }
+    form { display:flex; gap:10px; margin:18px 0; } .conversation-panel form { margin:0; padding:16px; border-top:1px solid rgba(0,0,0,.08); } input { min-width:0; flex:1; border:1px solid rgba(0,0,0,.15); border-radius:4px; padding:13px; color:inherit; background:#fff; font:inherit; } button { border:0; border-radius:4px; color:#fff; background:#0891b2; font-weight:700; padding:0 18px; cursor:pointer; } button:disabled { opacity:.55; cursor:wait; }
     .rail { position:sticky; top:16px; } .activity-rail { max-height:calc(100vh - 118px); display:flex; flex-direction:column; } .control-rail { position:sticky; top:16px; display:grid; gap:18px; }
-    .activity-rail .panel-head { background:linear-gradient(90deg,#0891b226,transparent); } .control-panel .panel-head { background:linear-gradient(90deg,#c916801b,transparent); }
-    #activity { min-height:0; flex:1; overflow-y:auto; list-style:none; padding:10px 18px 14px; margin:0; display:flex; flex-direction:column; gap:8px; } .event { border-left:2px solid #46616b; padding-left:9px; font-size:12px; } .event .time { color:#789096; font-size:11px; margin-top:2px; } .event.tool { border-color:#e3aa70; } .event.done { border-color:#8aefda; } .event.fail { border-color:#e77b9b; }
-    .session { margin-top:18px; padding-top:12px; border-top:1px solid #36515b; font-family:ui-monospace, monospace; font-size:11px; color:#91a9ad; word-break:break-all; }
+    .activity-rail .panel-head { background:linear-gradient(90deg,#ecfeff,transparent); } .control-panel .panel-head { background:linear-gradient(90deg,#fdf2f8,transparent); }
+    #activity { min-height:0; flex:1; overflow-y:auto; list-style:none; padding:10px 18px 14px; margin:0; display:flex; flex-direction:column; gap:8px; } .event { border-left:2px solid #cbd5d8; padding-left:9px; font-size:12px; } .event .time { color:#71717a; font-size:11px; margin-top:2px; } .event.tool { border-color:#f59e0b; } .event.done { border-color:#22c55e; } .event.fail { border-color:#ef4444; }
+    .session { margin-top:18px; padding-top:12px; border-top:1px solid rgba(0,0,0,.08); font-family:ui-monospace, monospace; font-size:11px; color:#71717a; word-break:break-all; }
     @media (max-width: 980px) { main { grid-template-columns:220px minmax(0, 1fr); } .control-rail { grid-column:1 / -1; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); } .rail, .control-rail { position:static; } .activity-rail { max-height:600px; } }
     @media (max-width: 700px) { main { display:block; padding:0 12px 12px; } header { padding:16px 12px; } .activity-rail, .control-rail, .main-workspace { margin-bottom:12px; } .control-rail { display:grid; grid-template-columns:1fr; } .conversation-panel { min-height:620px; } }
   </style>
 </head>
 <body>
-  <header><div class="brand"><div class="mark">✦</div>Kagent Vision Activity</div><div class="badge">local kind · Agent Substrate</div></header>
+  <header><div class="brand"><div class="mark">✦</div>Kagent Vision Activity</div><div class="header-actions"><button id="new-session" type="button">New session</button><div class="badge">local kind · Agent Substrate</div></div></header>
   <main>
     <aside class="panel rail activity-rail">
       <div class="panel-head"><h2>Activity stream</h2><span class="muted">live MCP events</span></div>
@@ -102,6 +102,7 @@
     const form = document.querySelector("#chat");
     const input = document.querySelector("#message");
     const submit = document.querySelector("#submit");
+    const newSession = document.querySelector("#new-session");
     const sreOutput = document.querySelector("#sre-output");
     const imagePreview = document.querySelector("#image-preview");
     const imagePlaceholder = document.querySelector("#image-placeholder");
@@ -334,6 +335,31 @@
       session.textContent = "Session: " + value;
       if (persist) persistView();
     }
+    function startNewSession() {
+      if (submit.disabled) return;
+      contextId = "";
+      sreContextId = "";
+      handledTransportFailures.clear();
+      conversation.replaceChildren();
+      const empty = document.createElement("div");
+      empty.id = "empty";
+      empty.className = "empty";
+      empty.textContent = "Submit a public HTTPS image URL to start the Vision agent.";
+      conversation.append(empty);
+      input.value = "";
+      imagePreview.removeAttribute("src");
+      imagePreview.classList.add("hidden");
+      imagePlaceholder.classList.remove("hidden");
+      setPhase("Ready for an image URL", "Submit a public HTTPS image to begin.", false);
+      currentTool.textContent = "Waiting for work";
+      toolDetail.textContent = "The active agent step will appear here.";
+      session.textContent = "Session will be created on your first request.";
+      resultSource.textContent = "Vision or SRE response";
+      sreOutput.dataset.markdown = "";
+      sreOutput.textContent = "No result yet.";
+      persistView();
+      input.focus();
+    }
     async function refreshToolActivity() {
       try {
         const response = await fetch("/api/activity");
@@ -417,6 +443,7 @@
     }
     restoreView();
     setInterval(refreshToolActivity, 1000);
+    newSession.addEventListener("click", startNewSession);
     form.addEventListener("submit", async event => {
       event.preventDefault();
       const message = input.value.trim();
