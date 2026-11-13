@@ -77,6 +77,8 @@ agent can read recent failures and public files from this repository. It can
 propose a complete replacement for one file, but `github_create_draft_pr` is
 configured with `requireApproval: true`: the kagent dashboard presents its
 arguments and must be explicitly approved before any GitHub write occurs.
+The local UI uses the dashboard's default `admin@kagent.dev` identity, so new
+Vision and SRE conversations appear in the same dashboard session list.
 
 To enable that optional local capability, create an in-cluster Secret from
 your existing GitHub CLI login. The token is not stored in this repository,

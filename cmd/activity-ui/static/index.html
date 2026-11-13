@@ -162,6 +162,7 @@
       } catch (_) {}
     }
     async function startSRE(failure) {
+      sreOutput.dataset.markdown = "";
       sreOutput.textContent = "Investigating MCP failure…";
       addActivity("SRE handoff", `${failure.tool} failure sent to kagent-sre`, "tool");
       try {
@@ -201,7 +202,14 @@
         if (update.contextId) sreContextId = update.contextId;
       }
       if (result.task?.contextId) sreContextId = result.task.contextId;
-      if (result.task?.status?.state === "TASK_STATE_COMPLETED") addActivity("SRE incident", "investigation completed", "done");
+      if (result.task?.status?.state === "TASK_STATE_COMPLETED") {
+        const finalText = textParts(result.task.status.message?.parts);
+        if (finalText) {
+          sreOutput.dataset.markdown = finalText;
+          renderMarkdown(sreOutput, finalText);
+        }
+        addActivity("SRE incident", "investigation completed; finding shown above", "done");
+      }
     }
     setInterval(refreshToolActivity, 1000);
     form.addEventListener("submit", async event => {

@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -10,6 +12,7 @@ func TestSendMessagePayloadPreservesContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sendMessagePayload: %v", err)
 	}
+
 	var decoded struct {
 		Method string `json:"method"`
 		Params struct {
@@ -36,5 +39,25 @@ func TestSendMessagePayloadPreservesContext(t *testing.T) {
 	}
 	if len(decoded.Params.Message.Parts) != 1 || decoded.Params.Message.Parts[0].Text != "describe this" {
 		t.Fatalf("parts = %#v", decoded.Params.Message.Parts)
+	}
+}
+
+func TestProxyA2AUsesConfiguredUserID(t *testing.T) {
+	var userID string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID = r.Header.Get("X-User-Id")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {}\n\n"))
+	}))
+	defer upstream.Close()
+
+	app := &app{httpClient: upstream.Client(), userID: "dashboard-user"}
+	request := httptest.NewRequest(http.MethodPost, "/api/chat", nil)
+	response := httptest.NewRecorder()
+
+	app.proxyA2A(response, request, upstream.URL, chatRequest{Message: "investigate"})
+
+	if userID != "dashboard-user" {
+		t.Fatalf("X-User-Id = %q, want dashboard-user", userID)
 	}
 }

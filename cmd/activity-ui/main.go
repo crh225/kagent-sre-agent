@@ -21,6 +21,7 @@ import (
 const (
 	defaultA2AURL = "http://kagent-controller.kagent.svc.cluster.local:8083/agents/kagent/kagent-vision"
 	defaultMCPURL = "http://kagent-vision-mcp.kagent.svc.cluster.local:8080/activity"
+	defaultUserID = "admin@kagent.dev"
 )
 
 //go:embed static/index.html
@@ -30,6 +31,7 @@ type app struct {
 	a2aURL     string
 	sreA2AURL  string
 	mcpURL     string
+	userID     string
 	httpClient *http.Client
 }
 
@@ -43,6 +45,7 @@ func main() {
 		a2aURL:     valueOrDefault("KAGENT_A2A_URL", defaultA2AURL),
 		sreA2AURL:  valueOrDefault("KAGENT_SRE_A2A_URL", "http://kagent-controller.kagent.svc.cluster.local:8083/agents/kagent/kagent-sre"),
 		mcpURL:     valueOrDefault("MCP_ACTIVITY_URL", defaultMCPURL),
+		userID:     valueOrDefault("KAGENT_USER_ID", defaultUserID),
 		httpClient: &http.Client{Timeout: 6 * time.Minute},
 	}
 	mux := http.NewServeMux()
@@ -136,7 +139,7 @@ func (a *app) proxyA2A(w http.ResponseWriter, r *http.Request, endpoint string, 
 	}
 	request.Header.Set("A2A-Version", "1.0")
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-User-Id", "vision-demo-ui")
+	request.Header.Set("X-User-Id", a.userID)
 
 	response, err := a.httpClient.Do(request)
 	if err != nil {
