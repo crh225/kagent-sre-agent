@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kagent-vision-ui
+  namespace: kagent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kagent-vision-ui
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kagent-vision-ui
+    spec:
+      containers:
+        - name: ui
+          image: kagent-vision-mcp:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - /activity-ui
+          ports:
+            - containerPort: 8090
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kagent-vision-ui
+  namespace: kagent
+spec:
+  selector:
+    app.kubernetes.io/name: kagent-vision-ui
+  ports:
+    - name: http
+      port: 8090
+      targetPort: http

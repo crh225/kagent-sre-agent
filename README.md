@@ -53,6 +53,18 @@ Open the kagent dashboard:
 kagent dashboard
 ```
 
+## Activity demo UI
+
+The optional activity UI shows the real A2A task lifecycle, streaming response,
+token usage, and actual MCP tool events from this demo:
+
+```bash
+kubectl --context kind-kagent -n kagent port-forward service/kagent-vision-ui 8090:8090
+```
+
+Open [http://localhost:8090](http://localhost:8090), paste a public HTTPS image
+URL, and watch the agent Session and `vision_describe_image` activity.
+
 Create a session for **kagent-vision** and paste a public HTTPS image URL,
 then ask what is in it. The session actor is managed, sandboxed, suspended
 when idle, and resumed by Agent Substrate through kagent.

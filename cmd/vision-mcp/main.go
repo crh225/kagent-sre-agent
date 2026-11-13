@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -71,6 +72,15 @@ type server struct {
 	ollamaClient *http.Client
 	ollamaHost   string
 	ollamaModel  string
+	activityMu   sync.RWMutex
+	activity     []toolActivity
+}
+
+type toolActivity struct {
+	At     time.Time `json:"at"`
+	Tool   string    `json:"tool"`
+	Phase  string    `json:"phase"`
+	Detail string    `json:"detail"`
 }
 
 func main() {
@@ -96,6 +106,7 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", s.handleMCP)
+	mux.HandleFunc("/activity", s.handleActivity)
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -137,6 +148,20 @@ func (s *server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	s.writeResponse(w, response)
 }
 
+func (s *server) handleActivity(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method must be GET", http.StatusMethodNotAllowed)
+		return
+	}
+	s.activityMu.RLock()
+	events := append([]toolActivity(nil), s.activity...)
+	s.activityMu.RUnlock()
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]any{"events": events}); err != nil {
+		log.Printf("write activity response: %v", err)
+	}
+}
+
 func toolDefinition() map[string]any {
 	return map[string]any{
 		"name":        toolName,
@@ -161,17 +186,35 @@ func (s *server) callTool(ctx context.Context, rawParams json.RawMessage) (any, 
 		return nil, &rpcError{Code: -32602, Message: "unknown tool"}
 	}
 
+	s.recordActivity("started", "Fetching the requested image.")
 	image, mimeType, err := s.fetchImage(ctx, params.Arguments.ImageURL)
 	if err != nil {
+		s.recordActivity("failed", err.Error())
 		return toolError(err), nil
 	}
 	answer, err := s.describeImage(ctx, image, mimeType, params.Arguments.Question)
 	if err != nil {
+		s.recordActivity("failed", err.Error())
 		return toolError(err), nil
 	}
+	s.recordActivity("completed", "Image analysis returned successfully.")
 	return map[string]any{
 		"content": []map[string]string{{"type": "text", "text": answer}},
 	}, nil
+}
+
+func (s *server) recordActivity(phase, detail string) {
+	s.activityMu.Lock()
+	defer s.activityMu.Unlock()
+	s.activity = append(s.activity, toolActivity{
+		At:     time.Now().UTC(),
+		Tool:   toolName,
+		Phase:  phase,
+		Detail: detail,
+	})
+	if len(s.activity) > 50 {
+		s.activity = s.activity[len(s.activity)-50:]
+	}
 }
 
 func toolError(err error) map[string]any {
