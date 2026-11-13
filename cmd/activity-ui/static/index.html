@@ -34,7 +34,7 @@
       <form id="chat"><input id="message" autocomplete="off" placeholder="https://example.com/image.jpg" aria-label="Message"><button id="submit">Analyze</button></form>
     </section>
     <aside class="panel">
-      <div class="panel-head"><h2>Agent activity</h2><span id="state" class="muted">idle</span></div>
+      <div class="panel-head"><h2>MCP activity</h2><span id="state" class="muted">shared demo ledger</span></div>
       <ul id="activity"></ul>
       <div class="sre"><h3>SRE incident agent</h3><div id="sre-output">Automatically investigates new MCP failures.</div></div>
       <div id="session" class="session">Session will be created on your first request.</div>
@@ -46,6 +46,7 @@
     let activityCursor = 0;
     let activityInitialized = false;
     const handledFailures = new Set();
+    const savedViewKey = "kagent-vision-activity-view-v1";
     const conversation = document.querySelector("#conversation");
     const activity = document.querySelector("#activity");
     const state = document.querySelector("#state");
@@ -62,7 +63,49 @@
       item.textContent = text;
       conversation.append(item);
       conversation.scrollTop = conversation.scrollHeight;
+      persistView();
       return item;
+    }
+    function persistView() {
+      try {
+        const messages = [...conversation.querySelectorAll(".message")].slice(-24).map(item => ({
+          kind: item.classList.contains("user") ? "user" : "agent",
+          markdown: item.dataset.markdown || "",
+          text: item.textContent,
+        }));
+        localStorage.setItem(savedViewKey, JSON.stringify({
+          contextId,
+          sreContextId,
+          messages,
+          sre: {
+            markdown: sreOutput.dataset.markdown || "",
+            text: sreOutput.textContent,
+          },
+        }));
+      } catch (_) {}
+    }
+    function restoreView() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(savedViewKey));
+        if (!saved) return;
+        if (saved.contextId) setContext(saved.contextId);
+        sreContextId = saved.sreContextId || "";
+        for (const message of saved.messages || []) {
+          const item = addMessage(message.kind, message.text);
+          if (message.markdown) {
+            item.dataset.markdown = message.markdown;
+            renderMarkdown(item, message.markdown);
+          }
+        }
+        if (saved.sre?.markdown) {
+          sreOutput.dataset.markdown = saved.sre.markdown;
+          renderMarkdown(sreOutput, saved.sre.markdown);
+        } else if (saved.sre?.text) {
+          sreOutput.textContent = saved.sre.text;
+        }
+      } catch (_) {
+        localStorage.removeItem(savedViewKey);
+      }
     }
     function renderMarkdown(message, markdown) {
       message.classList.add("markdown");
@@ -102,13 +145,13 @@
     function escapeHTML(text) {
       return text.replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[char]));
     }
-    function addActivity(label, detail, css = "") {
+    function addActivity(label, detail, css = "", at = "") {
       const item = document.createElement("li");
       item.className = "event " + css;
       item.innerHTML = "<strong></strong><div></div><div class='time'></div>";
       item.querySelector("strong").textContent = label;
       item.querySelector("div").textContent = detail;
-      item.querySelector(".time").textContent = new Date().toLocaleTimeString();
+      item.querySelector(".time").textContent = new Date(at || Date.now()).toLocaleTimeString();
       activity.prepend(item);
     }
     function textParts(parts) { return (parts || []).map(p => p.text || "").join(""); }
@@ -126,6 +169,7 @@
           const completeText = update.append ? (agentMessage.dataset.markdown || "") + text : text;
           agentMessage.dataset.markdown = completeText;
           renderMarkdown(agentMessage, completeText);
+          persistView();
         }
         if (update.contextId) setContext(update.contextId);
       }
@@ -138,7 +182,11 @@
         if (usage) addActivity("Model usage", `${usage.inputTokens || 0} input · ${usage.outputTokens || 0} output tokens`, "done");
       }
     }
-    function setContext(value) { contextId = value; session.textContent = "Session: " + value; }
+    function setContext(value) {
+      contextId = value;
+      session.textContent = "Session: " + value;
+      persistView();
+    }
     async function refreshToolActivity() {
       try {
         const response = await fetch("/api/activity");
@@ -146,7 +194,7 @@
         const events = body.events || [];
         const newEvents = events.slice(activityCursor);
         for (const event of newEvents) {
-          addActivity("MCP " + event.tool, event.phase + " · " + event.detail, event.phase === "completed" ? "done" : event.phase === "failed" ? "fail" : "tool");
+          addActivity("MCP " + event.tool, event.phase + " · " + event.detail, event.phase === "completed" ? "done" : event.phase === "failed" ? "fail" : "tool", event.at);
         }
         if (activityInitialized) {
           for (const event of newEvents.filter(event => event.phase === "failed")) {
@@ -164,6 +212,7 @@
     async function startSRE(failure) {
       sreOutput.dataset.markdown = "";
       sreOutput.textContent = "Investigating MCP failure…";
+      persistView();
       addActivity("SRE handoff", `${failure.tool} failure sent to kagent-sre`, "tool");
       try {
         const response = await fetch("/api/sre", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({...failure, contextId:sreContextId}) });
@@ -198,6 +247,7 @@
           const completeText = update.append ? (sreOutput.dataset.markdown || "") + text : text;
           sreOutput.dataset.markdown = completeText;
           renderMarkdown(sreOutput, completeText);
+          persistView();
         }
         if (update.contextId) sreContextId = update.contextId;
       }
@@ -207,10 +257,12 @@
         if (finalText) {
           sreOutput.dataset.markdown = finalText;
           renderMarkdown(sreOutput, finalText);
+          persistView();
         }
         addActivity("SRE incident", "investigation completed; finding shown above", "done");
       }
     }
+    restoreView();
     setInterval(refreshToolActivity, 1000);
     form.addEventListener("submit", async event => {
       event.preventDefault();
@@ -240,6 +292,7 @@
         }
       } catch (error) {
         agentMessage.textContent = "Request failed: " + error.message;
+        persistView();
         addActivity("Request", error.message, "fail");
         state.textContent = "failed";
       } finally {
