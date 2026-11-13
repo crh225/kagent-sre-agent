@@ -48,7 +48,7 @@
     const handledFailures = new Set();
     const activityEntries = [];
     const activityKeys = new Set();
-    const savedViewKey = "kagent-vision-activity-view-v1";
+    const savedViewKey = "kagent-vision-activity-view-v2";
     const conversation = document.querySelector("#conversation");
     const activity = document.querySelector("#activity");
     const state = document.querySelector("#state");
@@ -57,6 +57,8 @@
     const input = document.querySelector("#message");
     const submit = document.querySelector("#submit");
     const sreOutput = document.querySelector("#sre-output");
+
+    try { localStorage.removeItem("kagent-vision-activity-view-v1"); } catch (_) {}
 
     function addMessage(kind, text) {
       document.querySelector("#empty")?.remove();
