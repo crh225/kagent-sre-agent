@@ -61,3 +61,14 @@ func TestProxyA2AUsesConfiguredUserID(t *testing.T) {
 		t.Fatalf("X-User-Id = %q, want dashboard-user", userID)
 	}
 }
+
+func TestHandleIndexDisablesBrowserCaching(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	response := httptest.NewRecorder()
+
+	(&app{}).handleIndex(response, request)
+
+	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", cacheControl)
+	}
+}
